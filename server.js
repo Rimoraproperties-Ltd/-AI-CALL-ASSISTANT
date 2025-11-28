@@ -1,75 +1,59 @@
-const express = require("express");
-const bodyParser = require("body-parser");
-const twilio = require("twilio");
+// server.js
 require("dotenv").config();
-
+const express = require("express");
+const cors = require("cors");
 const app = express();
-app.use(bodyParser.urlencoded({ extended: false }));
-app.use(bodyParser.json());
 
-// Load environment variables
-const accountSid = process.env.TWILIO_ACCOUNT_SID;
-const authToken = process.env.TWILIO_AUTH_TOKEN;
-const fromNumber = process.env.TWILIO_PHONE_NUMBER;
+// Load Twilio credentials from environment variables
+const ACCOUNT_SID = process.env.ACCOUNT_SID;
+const AUTH_TOKEN = process.env.AUTH_TOKEN;
+const TWILIO_NUMBER = process.env.TWILIO_NUMBER;
+
+if (!ACCOUNT_SID || !AUTH_TOKEN || !TWILIO_NUMBER) {
+    console.error("❌ Missing environment variables!");
+    console.error("Make sure ACCOUNT_SID, AUTH_TOKEN, and TWILIO_NUMBER are set.");
+    process.exit(1);
+}
+
+// Twilio client
+const client = require("twilio")(ACCOUNT_SID, AUTH_TOKEN);
+
+// Middleware
+app.use(cors());
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// =========================
+// 📞 MAKE CALL ROUTE
+// =========================
+app.get("/makecall", async (req, res) => {
+    const to = req.query.to;
+
+    if (!to) {
+        return res.json({ success: false, error: "Missing 'to' parameter" });
+    }
+
+    try {
+        const call = await client.calls.create({
+            to: to,
+            from: TWILIO_NUMBER,
+            url: "https://handler.twilio.com/twiml/EHf6e5b0824bc98b68a0fff4d7f83b1c9b" // Your TwiML BIN URL
+        });
+
+        console.log("📞 Call started:", call.sid);
+        return res.json({ success: true, sid: call.sid });
+
+    } catch (error) {
+        console.error("❌ Twilio Error:", error);
+        return res.json({ success: false, error: error.message });
+    }
+});
+
+// Root
+app.get("/", (req, res) => {
+    res.send("AI Call Server Running 🚀");
+});
+
+// Server start
 const PORT = process.env.PORT || 3000;
-
-// Initialize Twilio client
-const client = twilio(accountSid, authToken);
-
-// --------------------------------------------------
-// HEALTH CHECK ENDPOINT
-// --------------------------------------------------
-app.get("/health", (req, res) => {
-  res.json({
-    status: "ok",
-    message: "Server is running successfully 🚀",
-    environment: {
-      TWILIO_ACCOUNT_SID: accountSid ? "✅ Loaded" : "❌ Missing",
-      TWILIO_AUTH_TOKEN: authToken ? "✅ Loaded" : "❌ Missing",
-      TWILIO_PHONE_NUMBER: fromNumber ? "✅ Loaded" : "❌ Missing",
-      PORT: PORT
-    },
-    timestamp: new Date().toISOString(),
-  });
-});
-
-// --------------------------------------------------
-// CALL MAKING ENDPOINT (GET + POST)
-// --------------------------------------------------
-app.all("/makecall", async (req, res) => {
-  const to = req.query.to || req.body.to;
-
-  if (!to) {
-    return res.status(400).json({
-      success: false,
-      error: "Missing 'to' number. Use /makecall?to=+234XXXXXXXXXX"
-    });
-  }
-
-  try {
-    const call = await client.calls.create({
-      to: to,
-      from: fromNumber,
-      url: "https://ai-call-assistant-znyw.onrender.com/voice"
-    });
-
-    res.json({ success: true, sid: call.sid });
-  } catch (err) {
-    res.json({ success: false, error: err.message });
-  }
-});
-
-// --------------------------------------------------
-// TWILIO VOICE WEBHOOK
-// --------------------------------------------------
-app.post("/voice", (req, res) => {
-  const twiml = new twilio.twiml.VoiceResponse();
-  twiml.say("Hello! This is your automated assistant speaking. This call was placed successfully.");
-  res.type("text/xml");
-  res.send(twiml.toString());
-});
-
-// --------------------------------------------------
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
