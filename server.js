@@ -1,66 +1,60 @@
 const express = require("express");
+const bodyParser = require("body-parser");
 const cors = require("cors");
-const { urlencoded } = require("body-parser");
+const twilio = require("twilio");
 require("dotenv").config();
 
 const app = express();
 app.use(cors());
-app.use(urlencoded({ extended: false }));
+app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: false }));
 
-const twilio = require("twilio");
-const client = twilio(
-    process.env.TWILIO_ACCOUNT_SID,
-    process.env.TWILIO_AUTH_TOKEN
-);
+// Store script here temporarily
+let callScript = "Hello, this is your call assistant.";
 
-// HEALTH CHECK
-app.get("/health", (req, res) => {
-    res.json({
-        status: "ok",
-        message: "Server is running successfully 🚀",
-        environment: {
-            TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID ? "✅ Loaded" : "❌ Missing",
-            TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN ? "✅ Loaded" : "❌ Missing",
-            TWILIO_PHONE_NUMBER: process.env.TWILIO_PHONE_NUMBER ? "✅ Loaded" : "❌ Missing",
-            PORT: process.env.PORT || 3000
-        },
-        timestamp: new Date().toISOString()
-    });
+// Update script from dashboard
+app.post("/api/script", (req, res) => {
+    if (!req.body.script) {
+        return res.status(400).json({ success: false, message: "Script is required" });
+    }
+    callScript = req.body.script;
+    res.json({ success: true, message: "Script updated", script: callScript });
 });
 
-// MAIN CALL ENDPOINT (with script support)
-app.post("/makecall", async (req, res) => {
+// Twilio Voice webhook
+app.post("/voice", (req, res) => {
+    const VoiceResponse = twilio.twiml.VoiceResponse;
+    const twiml = new VoiceResponse();
+
+    // Read dynamic script
+    twiml.say({ voice: "alice", language: "en-US" }, callScript);
+
+    res.type("text/xml");
+    res.send(twiml.toString());
+});
+
+// Make call
+app.post("/api/makecall", async (req, res) => {
     try {
-        const { to, message } = req.query;
-
-        if (!to) {
-            return res.status(400).json({ success: false, error: "Missing 'to' parameter" });
-        }
-
-        const finalMessage =
-            message ||
-            "Hello, this is your automated call assistant speaking. No script was provided.";
-
-        const twimlResponse = `<Response><Say>${finalMessage}</Say></Response>`;
+        const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
 
         const call = await client.calls.create({
-            twiml: twimlResponse,
-            to,
-            from: process.env.TWILIO_PHONE_NUMBER
+            to: req.body.to,
+            from: process.env.TWILIO_PHONE_NUMBER,
+            url: process.env.BASE_URL + "/voice"
         });
 
-        res.json({
-            success: true,
-            message: "Call initiated successfully",
-            sid: call.sid
-        });
+        res.json({ success: true, message: "Call started", sid: call.sid });
     } catch (err) {
-        res.status(500).json({ success: false, error: err.message });
+        console.error(err);
+        res.status(500).json({
+            success: false,
+            message: "Call failed",
+            error: err.message
+        });
     }
 });
 
-// START SERVER
+// Server
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`🚀 Server running on port ${PORT}`);
-});
+app.listen(PORT, () => console.log(`Server running on ${PORT}`));
