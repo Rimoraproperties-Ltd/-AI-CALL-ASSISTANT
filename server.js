@@ -1,80 +1,65 @@
-// ================================
-// server.js — SAFE FOR GITHUB
-// ================================
-
 const express = require("express");
 const cors = require("cors");
-const { Twilio } = require("twilio");
+const { urlencoded } = require("body-parser");
+require("dotenv").config();
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+app.use(urlencoded({ extended: false }));
 
-// Load environment variables
-const ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID;
-const AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN;
-const TWILIO_NUMBER = process.env.TWILIO_PHONE_NUMBER;
+const twilio = require("twilio");
+const client = twilio(
+    process.env.TWILIO_ACCOUNT_SID,
+    process.env.TWILIO_AUTH_TOKEN
+);
 
-// Initialize Twilio Client
-const client = new Twilio(ACCOUNT_SID, AUTH_TOKEN);
-
-// ================================
-// HEALTH CHECK ENDPOINT
-// ================================
+// HEALTH CHECK
 app.get("/health", (req, res) => {
-    return res.json({
+    res.json({
         status: "ok",
         message: "Server is running successfully 🚀",
         environment: {
-            TWILIO_ACCOUNT_SID: ACCOUNT_SID ? "✅ Loaded" : "❌ Missing",
-            TWILIO_AUTH_TOKEN: AUTH_TOKEN ? "✅ Loaded" : "❌ Missing",
-            TWILIO_PHONE_NUMBER: TWILIO_NUMBER ? "✅ Loaded" : "❌ Missing",
-            PORT: process.env.PORT || "3000"
+            TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID ? "✅ Loaded" : "❌ Missing",
+            TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN ? "✅ Loaded" : "❌ Missing",
+            TWILIO_PHONE_NUMBER: process.env.TWILIO_PHONE_NUMBER ? "✅ Loaded" : "❌ Missing",
+            PORT: process.env.PORT || 3000
         },
         timestamp: new Date().toISOString()
     });
 });
 
-// ================================
-// MAKE CALL ENDPOINT
-// ================================
+// MAIN CALL ENDPOINT (with script support)
 app.post("/makecall", async (req, res) => {
     try {
-        const to = req.query.to || req.body.to;
+        const { to, message } = req.query;
 
         if (!to) {
-            return res.status(400).json({
-                success: false,
-                error: "Missing 'to' phone number"
-            });
+            return res.status(400).json({ success: false, error: "Missing 'to' parameter" });
         }
 
-        console.log("📞 Making call to:", to);
+        const finalMessage =
+            message ||
+            "Hello, this is your automated call assistant speaking. No script was provided.";
+
+        const twimlResponse = `<Response><Say>${finalMessage}</Say></Response>`;
 
         const call = await client.calls.create({
-            to: to,
-            from: TWILIO_NUMBER,
-            url: "https://handler.twilio.com/twiml/EH0c1a48bfd757b698f217b588cc50ee4d" // Your TwimlBin or Twilio Function URL
+            twiml: twimlResponse,
+            to,
+            from: process.env.TWILIO_PHONE_NUMBER
         });
 
-        return res.json({
+        res.json({
             success: true,
             message: "Call initiated successfully",
             sid: call.sid
         });
-
-    } catch (error) {
-        console.error("❌ Call error:", error.message);
-        return res.status(500).json({
-            success: false,
-            error: error.message
-        });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
     }
 });
 
-// ================================
 // START SERVER
-// ================================
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`🚀 Server running on port ${PORT}`);
