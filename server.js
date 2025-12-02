@@ -78,7 +78,7 @@ app.post("/voice", async (req, res) => {
       input: { ssml: ssmlScript },
       voice: {
         languageCode: "en-US",
-        name: "en-US-Wavenet-C", // New warm + expressive female voice
+        name: "en-US-Neural2-F", // New warm + expressive female voice
         ssmlGender: "FEMALE"
       },
       audioConfig: {
@@ -140,3 +140,4 @@ app.use(express.static(__dirname));
 // ------------------ SERVER START ------------------
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Server running on ${PORT}`));
+
