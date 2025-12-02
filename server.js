@@ -23,8 +23,8 @@ const ttsClient = new textToSpeech.TextToSpeechClient();
 // ------------------ SCRIPT ------------------
 let callScript = "Hello, this is your call assistant.";
 
-// Keywords to automatically emphasize (customize as needed)
-const emphasisKeywords = ["important", "urgent", "please"];
+// Keywords to emphasize (customize)
+const emphasisKeywords = ["important", "urgent", "please", "note", "remember"];
 
 // ------------------ EXPRESSIVE SSML FUNCTIONS ------------------
 function emphasizeKeywords(script, keywords = []) {
@@ -36,27 +36,28 @@ function emphasizeKeywords(script, keywords = []) {
   return result;
 }
 
-function makeExpressiveSSML(script) {
-  // Apply keyword emphasis
+function makeDynamicSSML(script) {
   const highlightedScript = emphasizeKeywords(script, emphasisKeywords);
 
-  // Add 400ms pause after each sentence
-  const sentences = highlightedScript.split(/([.?!])/g);
-  const ssmlSentences = sentences
-    .map(s => s.trim())
-    .filter(s => s.length > 0)
-    .map(s => `<s>${s}<break time="400ms"/></s>`)
-    .join("");
+  // Split by punctuation to add dynamic pauses and slight pitch changes
+  const segments = highlightedScript.split(/([.?!,])/g).map(s => s.trim()).filter(s => s.length > 0);
 
-  // Wrap with prosody for natural rate and pitch
-  return `<speak><prosody rate="0.9" pitch="0">${ssmlSentences}</prosody></speak>`;
+  const ssmlSegments = segments.map(seg => {
+    let breakTime = "200ms"; // default pause for commas
+    let pitch = "0"; // default pitch
+
+    if (/[.]/.test(seg)) breakTime = "500ms"; // period
+    if (/[?!]/.test(seg)) { breakTime = "600ms"; pitch = "0.5"; } // exclamation or question
+
+    return `<s><prosody pitch="${pitch}">${seg}</prosody><break time="${breakTime}"/></s>`;
+  });
+
+  return `<speak><prosody rate="0.9">${ssmlSegments.join('')}</prosody></speak>`;
 }
 
 // ------------------ DASHBOARD SCRIPT UPDATE ------------------
 app.post("/api/script", (req, res) => {
-  if (!req.body.script) {
-    return res.status(400).json({ success: false, message: "Script is required" });
-  }
+  if (!req.body.script) return res.status(400).json({ success: false, message: "Script is required" });
   callScript = req.body.script;
   res.json({ success: true, message: "Script updated", script: callScript });
 });
@@ -67,7 +68,7 @@ app.post("/voice", async (req, res) => {
   const twiml = new VoiceResponse();
 
   try {
-    const ssmlScript = makeExpressiveSSML(callScript);
+    const ssmlScript = makeDynamicSSML(callScript);
 
     const ttsRequest = {
       input: { ssml: ssmlScript },
@@ -86,11 +87,7 @@ app.post("/voice", async (req, res) => {
     res.send(twiml.toString());
 
     // Delete temp audio after 1 minute
-    setTimeout(() => {
-      fs.unlink(audioFilePath, err => {
-        if (err) console.error("Error deleting temp audio:", err);
-      });
-    }, 60 * 1000);
+    setTimeout(() => fs.unlink(audioFilePath, err => { if(err) console.error(err); }), 60 * 1000);
 
   } catch (err) {
     console.error("TTS Error:", err);
