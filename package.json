@@ -12,9 +12,6 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.1",
     "body-parser": "^1.20.2",
-    "@google-cloud/text-to-speech": "^4.4.0",
-    "util": "^0.12.5",
-    "fs": "0.0.1-security",
-    "path": "^0.12.7"
+    "@google-cloud/text-to-speech": "^6.3.0"
   }
 }
