@@ -72,7 +72,7 @@ app.post("/voice", async (req, res) => {
 
     const ttsRequest = {
       input: { ssml: ssmlScript },
-      voice: { languageCode: "en-US", name: "en-US-Wavenet-F", ssmlGender: "FEMALE" },
+      voice: { languageCode: "en-US", name: "en-US-Wavenet-C", ssmlGender: "FEMALE" },
       audioConfig: { audioEncoding: "MP3", speakingRate: 0.9, pitch: 0 }
     };
 
@@ -119,3 +119,4 @@ app.use(express.static(__dirname));
 // ------------------ SERVER ------------------
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Server running on ${PORT}`));
+
