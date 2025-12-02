@@ -17,8 +17,6 @@ app.use(bodyParser.urlencoded({ extended: false }));
 // Create temporary JSON key file from environment variable
 const keyPath = path.join(__dirname, "call-assistant-key.json");
 fs.writeFileSync(keyPath, process.env.GOOGLE_TTS_JSON);
-
-// Tell Google TTS where the key is
 process.env.GOOGLE_APPLICATION_CREDENTIALS = keyPath;
 
 // Initialize Google TTS client
@@ -42,13 +40,17 @@ app.post("/voice", async (req, res) => {
   const twiml = new VoiceResponse();
 
   try {
-    // Convert your script to SSML for natural voice
-    const ssmlScript = `<speak>${callScript}</speak>`;
+    // Expressive SSML for natural voice
+    const ssmlScript = `<speak>
+      <prosody rate="0.9" pitch="0">
+        <emphasis level="moderate">${callScript}</emphasis>
+      </prosody>
+    </speak>`;
 
     const ttsRequest = {
       input: { ssml: ssmlScript },
-      voice: { languageCode: "en-US", name: "en-US-Wavenet-D", ssmlGender: "FEMALE" },
-      audioConfig: { audioEncoding: "MP3", speakingRate: 0.95, pitch: 0 }
+      voice: { languageCode: "en-US", name: "en-US-Wavenet-F", ssmlGender: "FEMALE" },
+      audioConfig: { audioEncoding: "MP3", speakingRate: 0.9, pitch: 0 }
     };
 
     const [response] = await ttsClient.synthesizeSpeech(ttsRequest);
