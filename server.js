@@ -1,141 +1,197 @@
-const express = require("express");
-const bodyParser = require("body-parser");
-const cors = require("cors");
-const twilio = require("twilio");
 require("dotenv").config();
+const express = require("express");
+const cors = require("cors");
 const fs = require("fs");
 const path = require("path");
 const util = require("util");
 const textToSpeech = require("@google-cloud/text-to-speech");
+const twilio = require("twilio");
+const { v4: uuidv4 } = require("uuid");
 
 const app = express();
 app.use(cors());
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: false }));
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true }));
 
-// ------------------ GOOGLE TTS SETUP ------------------
-const keyPath = path.join(__dirname, "call-assistant-key.json");
-fs.writeFileSync(keyPath, process.env.GOOGLE_TTS_JSON);
-process.env.GOOGLE_APPLICATION_CREDENTIALS = keyPath;
+// =========================
+// BASE SETTINGS
+// =========================
+const BASE_URL = process.env.BASE_URL || "https://ai-call-assistant-znyw.onrender.com";
+const TMP_DIR = __dirname;
 
-const ttsClient = new textToSpeech.TextToSpeechClient();
+// =========================
+// GOOGLE TTS CLIENT
+// =========================
+const googleCreds = JSON.parse(process.env.GOOGLE_CREDENTIALS);
 
-// ------------------ SCRIPT ------------------
+let ttsClient;
+try {
+  ttsClient = new textToSpeech.TextToSpeechClient({
+    credentials: googleCreds,
+  });
+  console.log("Google TTS client initialized");
+} catch (err) {
+  console.error("Error initializing Google TTS client:", err);
+}
+
+// Clean user text
+function cleanText(t) {
+  if (!t) return "";
+  return t.replace(/[&<>"]/g, "");
+}
+
+// SSML generator
+function makeSSML(text) {
+  return `
+    <speak>
+      <prosody pitch="+6st" rate="96%">
+        <emphasis level="moderate">${text}</emphasis>
+      </prosody>
+    </speak>
+  `;
+}
+
+// =========================
+// UPDATE SCRIPT
+// =========================
 let callScript = "Hello, this is your call assistant.";
 
-// Keywords to emphasize
-const emphasisKeywords = ["important", "urgent", "please", "note", "remember"];
-
-// ------------------ SSML GENERATION ------------------
-function emphasizeKeywords(script, keywords = []) {
-  let result = script;
-  keywords.forEach(word => {
-    const regex = new RegExp(`\\b(${word})\\b`, "gi");
-    result = result.replace(regex, `<emphasis level="moderate">$1</emphasis>`);
-  });
-  return result;
-}
-
-function makeDynamicSSML(script) {
-  const highlightedScript = emphasizeKeywords(script, emphasisKeywords);
-
-  const segments = highlightedScript
-    .split(/([.?!,])/g)
-    .map(s => s.trim())
-    .filter(s => s.length > 0);
-
-  const ssmlSegments = segments.map(seg => {
-    let breakTime = "200ms";
-    let pitch = "0";
-
-    if (/[.]/.test(seg)) breakTime = "500ms"; 
-    if (/[?!]/.test(seg)) { breakTime = "600ms"; pitch = "1.0"; }
-
-    return `<s><prosody pitch="${pitch}">${seg}</prosody><break time="${breakTime}"/></s>`;
-  });
-
-  return `<speak><prosody rate="0.92" pitch="4.0">${ssmlSegments.join("")}</prosody></speak>`;
-}
-
-// ------------------ UPDATE SCRIPT API ------------------
 app.post("/api/script", (req, res) => {
-  if (!req.body.script)
-    return res.status(400).json({ success: false, message: "Script is required" });
+  const script = req.body.script;
+  if (!script || typeof script !== "string") {
+    return res.status(400).json({ success: false, message: "Invalid script" });
+  }
 
-  callScript = req.body.script;
-  res.json({ success: true, message: "Script updated", script: callScript });
+  callScript = cleanText(script);
+  return res.json({ success: true, message: "Script updated" });
 });
 
-// ------------------ TWILIO VOICE HANDLER ------------------
+// =========================
+// MAKE CALL — ALWAYS RETURNS JSON
+// =========================
+app.post("/api/makecall", async (req, res) => {
+  const to = req.body.to;
+
+  if (!to) {
+    return res.status(400).json({
+      success: false,
+      message: "Missing 'to' phone number",
+    });
+  }
+
+  if (!process.env.TWILIO_ACCOUNT_SID ||
+      !process.env.TWILIO_AUTH_TOKEN ||
+      !process.env.TWILIO_PHONE_NUMBER) {
+    return res.status(500).json({
+      success: false,
+      message: "Twilio credentials not set",
+    });
+  }
+
+  try {
+    const client = twilio(
+      process.env.TWILIO_ACCOUNT_SID,
+      process.env.TWILIO_AUTH_TOKEN
+    );
+
+    const call = await client.calls.create({
+      to,
+      from: process.env.TWILIO_PHONE_NUMBER,
+      url: `${BASE_URL}/voice`,
+    });
+
+    return res.json({
+      success: true,
+      message: "Call started",
+      sid: call.sid,
+    });
+
+  } catch (err) {
+    console.error("Twilio call error:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: "TWILIO_ERROR",
+      error: err.message || String(err),
+    });
+  }
+});
+
+// =========================
+// /voice ENDPOINT — TWILIO ONLY
+// =========================
 app.post("/voice", async (req, res) => {
+  const ua = req.headers["user-agent"] || "";
+  if (!ua.includes("Twilio")) {
+    return res.json({
+      success: false,
+      error: "VOICE_ENDPOINT_FOR_TWILIO_ONLY",
+    });
+  }
+
   const VoiceResponse = twilio.twiml.VoiceResponse;
   const twiml = new VoiceResponse();
 
+  const text = cleanText(callScript);
+  const ssml = makeSSML(text);
+
+  const ttsRequest = {
+    input: { ssml },
+    voice: {
+      languageCode: "en-US",
+      name: "en-US-Neural2-F",
+      ssmlGender: "FEMALE",
+    },
+    audioConfig: {
+      audioEncoding: "MP3",
+      speakingRate: 1.02,
+      pitch: 7.5,
+      volumeGainDb: 2.0,
+      effectsProfileId: ["telephone-class-application"],
+    }
+  };
+
   try {
-    const ssmlScript = makeDynamicSSML(callScript);
+    const [audioResponse] = await ttsClient.synthesizeSpeech(ttsRequest);
 
-    const ttsRequest = {
-      input: { ssml: ssmlScript },
-      voice: {
-        languageCode: "en-US",
-        name: "en-US-Wavenet-C", // Warm female voice
-        ssmlGender: "FEMALE"
-      },
-      audioConfig: {
-        audioEncoding: "MP3",
-        speakingRate: 0.92,
-        pitch: 4.0,
-        volumeGainDb: 1.5
-      }
-    };
+    const fileName = `voice-${Date.now()}-${uuidv4()}.mp3`;
+    const filePath = path.join(TMP_DIR, fileName);
 
-    const [response] = await ttsClient.synthesizeSpeech(ttsRequest);
+    await util.promisify(fs.writeFile)(filePath, audioResponse.audioContent, "binary");
 
-    const audioFileName = `output-${Date.now()}.mp3`;
-    const audioFilePath = path.join(__dirname, audioFileName);
-
-    const writeFile = util.promisify(fs.writeFile);
-    await writeFile(audioFilePath, response.audioContent, "binary");
-
-    twiml.play(`${process.env.BASE_URL}/${audioFileName}`);
+    twiml.play(`${BASE_URL}/${fileName}`);
     res.type("text/xml");
     res.send(twiml.toString());
 
     setTimeout(() => {
-      fs.unlink(audioFilePath, err => {
-        if (err) console.error(err);
+      fs.unlink(filePath, err => {
+        if (err) console.error("Cleanup failed:", err);
       });
     }, 60000);
 
   } catch (err) {
-    console.error("TTS ERROR:", err);
-    twiml.say("Sorry, there was an error generating the voice.");
+    console.error("TTS ERROR in /voice:", err);
+    twiml.say(
+      { voice: "alice", language: "en-US" },
+      "Sorry, there was an error generating the voice."
+    );
     res.type("text/xml");
     res.send(twiml.toString());
   }
 });
 
-// ------------------ TRIGGER CALL API ------------------
-app.post("/api/makecall", async (req, res) => {
-  try {
-    const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+// =========================
+// STATIC FILES FOR AUDIO
+// =========================
+app.use(express.static(TMP_DIR));
 
-    const call = await client.calls.create({
-      to: req.body.to,
-      from: process.env.TWILIO_PHONE_NUMBER,
-      url: process.env.BASE_URL + "/voice"
-    });
-
-    res.json({ success: true, message: "Call started", sid: call.sid });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, message: "Call failed", error: err.message });
-  }
+// HEALTH CHECK
+app.get("/", (req, res) => {
+  res.json({ status: "SERVER_RUNNING" });
 });
 
-// ------------------ STATIC FILES ------------------
-app.use(express.static(__dirname));
-
-// ------------------ SERVER START ------------------
+// START SERVER
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server running on ${PORT}`));
+app.listen(PORT, () =>
+  console.log(`Server running on port ${PORT} — BASE_URL = ${BASE_URL}`)
+);
