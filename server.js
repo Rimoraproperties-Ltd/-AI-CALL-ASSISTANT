@@ -54,7 +54,7 @@ function makeDynamicSSML(script) {
     return `<s><prosody pitch="${pitch}">${seg}</prosody><break time="${breakTime}"/></s>`;
   });
 
-  return `<speak><prosody rate="1.02" pitch="7.5">${ssmlSegments.join("")}</prosody></speak>`;
+  return `<speak><prosody rate="0.92" pitch="4.0">${ssmlSegments.join("")}</prosody></speak>`;
 }
 
 // ------------------ UPDATE SCRIPT API ------------------
@@ -78,15 +78,14 @@ app.post("/voice", async (req, res) => {
       input: { ssml: ssmlScript },
       voice: {
         languageCode: "en-US",
-        name: "en-US-Neural2-F", // New warm + expressive female voice
+        name: "en-US-Wavenet-C", // Warm female voice
         ssmlGender: "FEMALE"
       },
       audioConfig: {
         audioEncoding: "MP3",
-        speakingRate: 1.02,
-        pitch: 7.5,
-        volumeGainDb: 2.2,
-        effectsProfileId: ["telephone-class-application"]
+        speakingRate: 0.92,
+        pitch: 4.0,
+        volumeGainDb: 1.5
       }
     };
 
