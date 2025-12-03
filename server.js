@@ -13,59 +13,63 @@ app.use(cors());
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 
-// =========================
-// BASE SETTINGS
-// =========================
-const BASE_URL = process.env.BASE_URL || "https://ai-call-assistant-znyw.onrender.com";
+// ---------------------------------------------------------------
+// BASIC CONFIG
+// ---------------------------------------------------------------
+const BASE_URL =
+  process.env.BASE_URL || "https://ai-call-assistant-znyw.onrender.com";
 const TMP_DIR = __dirname;
 
-// =========================
-// GOOGLE TTS CLIENT
-// =========================
-// This uses GOOGLE_APPLICATION_CREDENTIALS automatically
+// ---------------------------------------------------------------
+// GOOGLE TTS CLIENT (using GOOGLE_APPLICATION_CREDENTIALS)
+// ---------------------------------------------------------------
 let ttsClient;
 try {
   ttsClient = new textToSpeech.TextToSpeechClient();
-  console.log("Google TTS Client loaded using GOOGLE_APPLICATION_CREDENTIALS");
+  console.log("Google TTS initialized using GOOGLE_APPLICATION_CREDENTIALS");
 } catch (err) {
-  console.error("Failed to initialize Google TTS client:", err);
+  console.error("Google TTS Initialization ERROR:", err);
 }
 
-// Clean user text
+// ---------------------------------------------------------------
+// UTILITIES
+// ---------------------------------------------------------------
 function cleanText(t) {
   if (!t) return "";
   return t.replace(/[&<>"]/g, "");
 }
 
-// SSML generator
-function makeSSML(text) {
+function createSafeSSML(text) {
+  // Warm, feminine, natural voice with safe SSML pitch
   return `
     <speak>
-      <prosody pitch="+7st" rate="98%">
-        <emphasis level="moderate">${text}</emphasis>
+      <prosody pitch="+4st" rate="97%">
+        ${text}
       </prosody>
     </speak>
   `;
 }
 
-// =========================
-// UPDATE SCRIPT
-// =========================
+// ---------------------------------------------------------------
+// SCRIPT MANAGEMENT
+// ---------------------------------------------------------------
 let callScript = "Hello, this is your call assistant.";
 
 app.post("/api/script", (req, res) => {
   const script = req.body.script;
-  if (!script || typeof script !== "string") {
-    return res.status(400).json({ success: false, message: "Invalid script" });
+  if (!script) {
+    return res
+      .status(400)
+      .json({ success: false, message: "Script cannot be empty" });
   }
 
   callScript = cleanText(script);
-  return res.json({ success: true, message: "Script updated" });
+  return res.json({ success: true, message: "Script updated successfully" });
 });
 
-// =========================
-// MAKE CALL — ALWAYS RETURNS JSON
-// =========================
+// ---------------------------------------------------------------
+// CALL API — ALWAYS RETURNS JSON
+// ---------------------------------------------------------------
 app.post("/api/makecall", async (req, res) => {
   const to = req.body.to;
 
@@ -76,12 +80,14 @@ app.post("/api/makecall", async (req, res) => {
     });
   }
 
-  if (!process.env.TWILIO_ACCOUNT_SID ||
-      !process.env.TWILIO_AUTH_TOKEN ||
-      !process.env.TWILIO_PHONE_NUMBER) {
+  if (
+    !process.env.TWILIO_ACCOUNT_SID ||
+    !process.env.TWILIO_AUTH_TOKEN ||
+    !process.env.TWILIO_PHONE_NUMBER
+  ) {
     return res.status(500).json({
       success: false,
-      message: "Twilio credentials not set",
+      message: "Twilio credentials not fully configured",
     });
   }
 
@@ -102,9 +108,8 @@ app.post("/api/makecall", async (req, res) => {
       message: "Call started",
       sid: call.sid,
     });
-
   } catch (err) {
-    console.error("Twilio call error:", err);
+    console.error("Twilio Error:", err);
 
     return res.status(500).json({
       success: false,
@@ -114,11 +119,13 @@ app.post("/api/makecall", async (req, res) => {
   }
 });
 
-// =========================
-// /voice ENDPOINT — TWILIO ONLY
-// =========================
+// ---------------------------------------------------------------
+// TWILIO VOICE WEBHOOK (ONLY TWILIO CAN ACCESS)
+// ---------------------------------------------------------------
 app.post("/voice", async (req, res) => {
   const ua = req.headers["user-agent"] || "";
+
+  // PROTECT from dashboard
   if (!ua.includes("Twilio")) {
     return res.json({
       success: false,
@@ -129,8 +136,8 @@ app.post("/voice", async (req, res) => {
   const VoiceResponse = twilio.twiml.VoiceResponse;
   const twiml = new VoiceResponse();
 
-  const text = cleanText(callScript);
-  const ssml = makeSSML(text);
+  const safeText = cleanText(callScript);
+  const ssml = createSafeSSML(safeText);
 
   const ttsRequest = {
     input: { ssml },
@@ -141,11 +148,9 @@ app.post("/voice", async (req, res) => {
     },
     audioConfig: {
       audioEncoding: "MP3",
-      speakingRate: 1.02,
-      pitch: 7.5,
-      volumeGainDb: 2.0,
-      effectsProfileId: ["telephone-class-application"],
-    }
+      speakingRate: 1.0,
+      // pitch, gain, effects REMOVED (invalid for some voices)
+    },
   };
 
   try {
@@ -154,20 +159,28 @@ app.post("/voice", async (req, res) => {
     const fileName = `voice-${Date.now()}-${uuidv4()}.mp3`;
     const filePath = path.join(TMP_DIR, fileName);
 
-    await util.promisify(fs.writeFile)(filePath, audioResponse.audioContent, "binary");
+    // Write MP3 file
+    await util.promisify(fs.writeFile)(
+      filePath,
+      audioResponse.audioContent,
+      "binary"
+    );
 
+    // Play it in the call
     twiml.play(`${BASE_URL}/${fileName}`);
     res.type("text/xml");
     res.send(twiml.toString());
 
+    // Auto-cleanup
     setTimeout(() => {
-      fs.unlink(filePath, err => {
-        if (err) console.error("Cleanup failed:", err);
+      fs.unlink(filePath, (err) => {
+        if (err) console.error("Temp file cleanup failed:", err);
       });
     }, 60000);
-
   } catch (err) {
     console.error("TTS ERROR in /voice:", err);
+
+    // Fallback voice
     twiml.say(
       { voice: "alice", language: "en-US" },
       "Sorry, there was an error generating the voice."
@@ -177,18 +190,19 @@ app.post("/voice", async (req, res) => {
   }
 });
 
-// =========================
-// STATIC FILES FOR AUDIO
-// =========================
+// ---------------------------------------------------------------
+// STATIC FILES (serve MP3 to Twilio)
+// ---------------------------------------------------------------
 app.use(express.static(TMP_DIR));
 
 // HEALTH CHECK
 app.get("/", (req, res) => {
-  res.json({ status: "SERVER_RUNNING" });
+  res.json({ status: "SERVER_RUNNING", base_url: BASE_URL });
 });
 
 // START SERVER
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () =>
-  console.log(`Server running on port ${PORT} — BASE_URL = ${BASE_URL}`)
-);
+app.listen(PORT, () => {
+  console.log(`SERVER RUNNING on port ${PORT}`);
+  console.log(`BASE_URL = ${BASE_URL}`);
+});
