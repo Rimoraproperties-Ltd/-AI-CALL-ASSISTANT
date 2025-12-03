@@ -22,16 +22,13 @@ const TMP_DIR = __dirname;
 // =========================
 // GOOGLE TTS CLIENT
 // =========================
-const googleCreds = JSON.parse(process.env.GOOGLE_CREDENTIALS);
-
+// This uses GOOGLE_APPLICATION_CREDENTIALS automatically
 let ttsClient;
 try {
-  ttsClient = new textToSpeech.TextToSpeechClient({
-    credentials: googleCreds,
-  });
-  console.log("Google TTS client initialized");
+  ttsClient = new textToSpeech.TextToSpeechClient();
+  console.log("Google TTS Client loaded using GOOGLE_APPLICATION_CREDENTIALS");
 } catch (err) {
-  console.error("Error initializing Google TTS client:", err);
+  console.error("Failed to initialize Google TTS client:", err);
 }
 
 // Clean user text
@@ -44,7 +41,7 @@ function cleanText(t) {
 function makeSSML(text) {
   return `
     <speak>
-      <prosody pitch="+6st" rate="96%">
+      <prosody pitch="+7st" rate="98%">
         <emphasis level="moderate">${text}</emphasis>
       </prosody>
     </speak>
@@ -112,86 +109,4 @@ app.post("/api/makecall", async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "TWILIO_ERROR",
-      error: err.message || String(err),
-    });
-  }
-});
-
-// =========================
-// /voice ENDPOINT — TWILIO ONLY
-// =========================
-app.post("/voice", async (req, res) => {
-  const ua = req.headers["user-agent"] || "";
-  if (!ua.includes("Twilio")) {
-    return res.json({
-      success: false,
-      error: "VOICE_ENDPOINT_FOR_TWILIO_ONLY",
-    });
-  }
-
-  const VoiceResponse = twilio.twiml.VoiceResponse;
-  const twiml = new VoiceResponse();
-
-  const text = cleanText(callScript);
-  const ssml = makeSSML(text);
-
-  const ttsRequest = {
-    input: { ssml },
-    voice: {
-      languageCode: "en-US",
-      name: "en-US-Neural2-F",
-      ssmlGender: "FEMALE",
-    },
-    audioConfig: {
-      audioEncoding: "MP3",
-      speakingRate: 1.02,
-      pitch: 7.5,
-      volumeGainDb: 2.0,
-      effectsProfileId: ["telephone-class-application"],
-    }
-  };
-
-  try {
-    const [audioResponse] = await ttsClient.synthesizeSpeech(ttsRequest);
-
-    const fileName = `voice-${Date.now()}-${uuidv4()}.mp3`;
-    const filePath = path.join(TMP_DIR, fileName);
-
-    await util.promisify(fs.writeFile)(filePath, audioResponse.audioContent, "binary");
-
-    twiml.play(`${BASE_URL}/${fileName}`);
-    res.type("text/xml");
-    res.send(twiml.toString());
-
-    setTimeout(() => {
-      fs.unlink(filePath, err => {
-        if (err) console.error("Cleanup failed:", err);
-      });
-    }, 60000);
-
-  } catch (err) {
-    console.error("TTS ERROR in /voice:", err);
-    twiml.say(
-      { voice: "alice", language: "en-US" },
-      "Sorry, there was an error generating the voice."
-    );
-    res.type("text/xml");
-    res.send(twiml.toString());
-  }
-});
-
-// =========================
-// STATIC FILES FOR AUDIO
-// =========================
-app.use(express.static(TMP_DIR));
-
-// HEALTH CHECK
-app.get("/", (req, res) => {
-  res.json({ status: "SERVER_RUNNING" });
-});
-
-// START SERVER
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () =>
-  console.log(`Server running on port ${PORT} — BASE_URL = ${BASE_URL}`)
-);
+      erro
