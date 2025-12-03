@@ -14,28 +14,34 @@ app.use(cors());
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 
-// CONFIG
+// ---------------------------------------------------------------
+// BASIC CONFIG
+// ---------------------------------------------------------------
 const BASE_URL =
   process.env.BASE_URL || "https://ai-call-assistant-znyw.onrender.com";
 const TMP_DIR = __dirname;
 const RESP_FILE = path.join(TMP_DIR, "responses.xlsx");
 
+// ---------------------------------------------------------------
 // GOOGLE TTS CLIENT
+// ---------------------------------------------------------------
 let ttsClient;
 try {
   ttsClient = new textToSpeech.TextToSpeechClient();
-  console.log("Google TTS loaded using GOOGLE_APPLICATION_CREDENTIALS");
+  console.log("Google TTS initialized using GOOGLE_APPLICATION_CREDENTIALS");
 } catch (err) {
-  console.error("Google TTS ERROR:", err);
+  console.error("Google TTS Initialization ERROR:", err);
 }
 
-// CLEAN TEXT
+// ---------------------------------------------------------------
+// HELPERS
+// ---------------------------------------------------------------
 function cleanText(t) {
   if (!t) return "";
   return String(t).replace(/[&<>"]/g, "");
 }
 
-// SSML BUILDER
+// ⭐ NEW: Slightly deeper, natural, professional female SSML
 function buildSSML(script) {
   const question =
     "If we go ahead and reserve a slot for you, would you be available? " +
@@ -43,14 +49,17 @@ function buildSSML(script) {
 
   return `
     <speak>
-      <prosody rate="97%">
-        ${script} ${question}
+      <prosody rate="96%" pitch="-0.5st">
+        <break time="200ms"/>
+        ${script}
+        <break time="350ms"/>
+        <emphasis level="moderate">${question}</emphasis>
       </prosody>
     </speak>
   `;
 }
 
-// APPEND TO EXCEL
+// Excel logging
 function appendResponse(phone, status, timestamp) {
   let data = [];
 
@@ -72,29 +81,37 @@ function appendResponse(phone, status, timestamp) {
   XLSX.writeFile(wb, RESP_FILE);
 }
 
-// SCRIPT + SMS STORAGE
+// ---------------------------------------------------------------
+// SCRIPT + SMS TEMPLATE STORAGE
+// ---------------------------------------------------------------
 let callScript = "Hello, this is your call assistant.";
 let smsTemplate = "Your reservation has been received. We will contact you shortly.";
 
-// UPDATE CALL SCRIPT
+// Update script
 app.post("/api/script", (req, res) => {
   const script = req.body.script;
-  if (!script) return res.status(400).json({ success: false, message: "Invalid script" });
+  if (!script)
+    return res.status(400).json({ success: false, message: "Invalid script" });
 
   callScript = cleanText(script);
   return res.json({ success: true });
 });
 
-// UPDATE SMS TEMPLATE
+// Update SMS template
 app.post("/api/sms-template", (req, res) => {
   const sms = req.body.sms;
-  if (!sms) return res.status(400).json({ success: false, message: "Invalid SMS template" });
+  if (!sms)
+    return res
+      .status(400)
+      .json({ success: false, message: "Invalid SMS template" });
 
   smsTemplate = sms.trim();
   return res.json({ success: true });
 });
 
+// ---------------------------------------------------------------
 // MAKE CALL
+// ---------------------------------------------------------------
 app.post("/api/makecall", async (req, res) => {
   const to = req.body.to;
 
@@ -121,7 +138,9 @@ app.post("/api/makecall", async (req, res) => {
   }
 });
 
-// TWILIO VOICE ROUTE
+// ---------------------------------------------------------------
+// TWILIO VOICE HANDLER
+// ---------------------------------------------------------------
 app.post("/voice", async (req, res) => {
   const ua = req.headers["user-agent"] || "";
   if (!ua.includes("Twilio"))
@@ -171,14 +190,16 @@ app.post("/voice", async (req, res) => {
 
     setTimeout(() => fs.unlink(filePath, () => {}), 60000);
   } catch (err) {
-    console.error("TTS error:", err);
+    console.error("TTS ERROR:", err);
     twiml.say("There was an error generating the voice.");
     res.type("text/xml");
     res.send(twiml.toString());
   }
 });
 
-// GATHER RESPONSE
+// ---------------------------------------------------------------
+// GATHER INPUT (1 OR 2)
+// ---------------------------------------------------------------
 app.post("/gather", async (req, res) => {
   const digit = req.body.Digits;
   const from = req.body.From;
@@ -200,7 +221,7 @@ app.post("/gather", async (req, res) => {
     await client.messages.create({
       to: from,
       from: process.env.TWILIO_PHONE_NUMBER,
-      body: smsTemplate,
+      body: smsTemplate, // ⭐ CUSTOM SMS TEMPLATE
     });
 
     twiml.say("Thank you. You will receive a reservation text shortly.");
@@ -214,7 +235,9 @@ app.post("/gather", async (req, res) => {
   res.send(twiml.toString());
 });
 
-// VIEW EXCEL
+// ---------------------------------------------------------------
+// VIEW EXCEL (NOT DOWNLOAD)
+// ---------------------------------------------------------------
 app.get("/api/view-reservations", (req, res) => {
   if (!fs.existsSync(RESP_FILE))
     return res.send("<h2>No reservation responses recorded yet.</h2>");
@@ -242,10 +265,15 @@ app.get("/api/view-reservations", (req, res) => {
   `);
 });
 
+// ---------------------------------------------------------------
 // STATIC + HEALTH CHECK
+// ---------------------------------------------------------------
 app.use(express.static(TMP_DIR));
 app.get("/", (req, res) => res.json({ status: "SERVER_RUNNING" }));
 
+// ---------------------------------------------------------------
+// START SERVER
+// ---------------------------------------------------------------
 app.listen(process.env.PORT || 3000, () =>
   console.log("SERVER RUNNING...")
 );
