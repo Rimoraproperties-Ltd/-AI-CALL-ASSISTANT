@@ -28,7 +28,7 @@ const RESP_FILE = path.join(TMP_DIR, "responses.xlsx");
 let ttsClient;
 try {
   ttsClient = new textToSpeech.TextToSpeechClient();
-  console.log("Google TTS initialized with GOOGLE_APPLICATION_CREDENTIALS");
+  console.log("Google TTS initialized using GOOGLE_APPLICATION_CREDENTIALS");
 } catch (err) {
   console.error("Google TTS Initialization ERROR:", err);
 }
@@ -41,7 +41,7 @@ function cleanText(t) {
   return String(t).replace(/[&<>"]/g, "");
 }
 
-// ⭐ HUMAN ENHANCED SSML VOICE
+// ⭐ NEW: Slightly deeper, natural, professional female SSML
 function buildSSML(script) {
   const question =
     "If we go ahead and reserve a slot for you, would you be available? " +
@@ -49,28 +49,17 @@ function buildSSML(script) {
 
   return `
     <speak>
-      <prosody rate="95%" pitch="-0.3st">
-        <break time="250ms"/>
-
-        <amazon:effect name="drc">
-          <prosody volume="+1.5dB">
-            ${script}
-          </prosody>
-        </amazon:effect>
-
-        <break time="450ms"/>
-
-        <prosody pitch="-0.1st" rate="94%">
-          <emphasis level="moderate">${question}</emphasis>
-        </prosody>
-
-        <break time="300ms"/>
+      <prosody rate="96%" pitch="-0.5st">
+        <break time="200ms"/>
+        ${script}
+        <break time="350ms"/>
+        <emphasis level="moderate">${question}</emphasis>
       </prosody>
     </speak>
   `;
 }
 
-// Append responses to Excel file
+// Excel logging
 function appendResponse(phone, status, timestamp) {
   let data = [];
 
@@ -96,8 +85,7 @@ function appendResponse(phone, status, timestamp) {
 // SCRIPT + SMS TEMPLATE STORAGE
 // ---------------------------------------------------------------
 let callScript = "Hello, this is your call assistant.";
-let smsTemplate =
-  "Your reservation has been received. We will contact you shortly.";
+let smsTemplate = "Your reservation has been received. We will contact you shortly.";
 
 // Update script
 app.post("/api/script", (req, res) => {
@@ -168,7 +156,7 @@ app.post("/voice", async (req, res) => {
     input: { ssml },
     voice: {
       languageCode: "en-US",
-      name: "en-US-Neural2-F", // Best natural female voice
+      name: "en-US-Neural2-F",
       ssmlGender: "FEMALE",
     },
     audioConfig: { audioEncoding: "MP3", speakingRate: 1.0 },
@@ -210,7 +198,7 @@ app.post("/voice", async (req, res) => {
 });
 
 // ---------------------------------------------------------------
-// GATHER INPUT (1 or 2)
+// GATHER INPUT (1 OR 2)
 // ---------------------------------------------------------------
 app.post("/gather", async (req, res) => {
   const digit = req.body.Digits;
@@ -233,7 +221,7 @@ app.post("/gather", async (req, res) => {
     await client.messages.create({
       to: from,
       from: process.env.TWILIO_PHONE_NUMBER,
-      body: smsTemplate,
+      body: smsTemplate, // ⭐ CUSTOM SMS TEMPLATE
     });
 
     twiml.say("Thank you. You will receive a reservation text shortly.");
@@ -248,7 +236,7 @@ app.post("/gather", async (req, res) => {
 });
 
 // ---------------------------------------------------------------
-// VIEW RESERVATION EXCEL (IN BROWSER)
+// VIEW EXCEL (NOT DOWNLOAD)
 // ---------------------------------------------------------------
 app.get("/api/view-reservations", (req, res) => {
   if (!fs.existsSync(RESP_FILE))
@@ -289,3 +277,4 @@ app.get("/", (req, res) => res.json({ status: "SERVER_RUNNING" }));
 app.listen(process.env.PORT || 3000, () =>
   console.log("SERVER RUNNING...")
 );
+
