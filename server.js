@@ -35,7 +35,7 @@ function cleanText(t) {
   return String(t).replace(/[&<>"]/g, "");
 }
 
-// ⭐ HUMAN + TELEPHONY-OPTIMIZED SSML
+// ⭐ Human + Telephony-optimized SSML
 function buildSSML(script) {
   const question =
     "If we go ahead and reserve a slot for you, would you be available? " +
@@ -79,14 +79,14 @@ function appendResponse(phone, status, timestamp) {
 }
 
 // --------------------------------------------------
-// STATE
+// STATE (Editable from dashboard)
 // --------------------------------------------------
 let callScript = "Hello, this is your call assistant.";
 let smsTemplate =
   "Your reservation has been received. We will contact you shortly.";
 
 // --------------------------------------------------
-// API ENDPOINTS
+// DASHBOARD ENDPOINTS
 // --------------------------------------------------
 app.post("/api/script", (req, res) => {
   callScript = cleanText(req.body.script || "");
@@ -176,15 +176,15 @@ app.post("/voice", async (req, res) => {
 });
 
 // --------------------------------------------------
-// GATHER RESPONSE
+// GATHER RESPONSE (✅ FIXED: uses req.body.To)
 // --------------------------------------------------
 app.post("/gather", async (req, res) => {
   const digit = req.body.Digits;
-  const from = req.body.From;
+  const prospect = req.body.To; // ✅ CORRECT NUMBER
   const timestamp = new Date().toISOString();
 
   const status = digit === "1" ? "Yes" : digit === "2" ? "No" : "Invalid";
-  appendResponse(from, status, timestamp);
+  appendResponse(prospect, status, timestamp);
 
   const VoiceResponse = twilio.twiml.VoiceResponse;
   const twiml = new VoiceResponse();
@@ -196,12 +196,14 @@ app.post("/gather", async (req, res) => {
     );
 
     await client.messages.create({
-      to: from,
+      to: prospect,
       from: process.env.TWILIO_PHONE_NUMBER,
       body: smsTemplate
     });
 
-    twiml.say("Thank you. You will receive a reservation text shortly.");
+    twiml.say(
+      "Thank you. We have noted your availability. You will receive a reservation message shortly."
+    );
   } else if (digit === "2") {
     twiml.say("Thank you. We have noted that you are not available.");
   } else {
@@ -234,5 +236,5 @@ app.get("/", (req, res) => res.json({ status: "SERVER_RUNNING" }));
 // START SERVER
 // --------------------------------------------------
 app.listen(process.env.PORT || 3000, () =>
-  console.log("SERVER RUNNING WITH MULAW AUDIO")
+  console.log("SERVER RUNNING — ALL FIXES APPLIED")
 );
