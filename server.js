@@ -24,7 +24,7 @@ app.get("/", (req, res) => {
 app.get("/test-sms", async (req, res) => {
   try {
     await atSMS.send({
-      to: ["+234XXXXXXXXXX"], // 🔴 REPLACE with YOUR phone number
+      to: ["+2349026645633"], // 🔴 REPLACE with YOUR phone number
       message: "Test SMS from Africa's Talking Sandbox"
     });
 
@@ -40,3 +40,4 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log("SMS Sandbox server running on port", PORT);
 });
+
