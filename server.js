@@ -4,237 +4,204 @@ const cors = require("cors");
 const fs = require("fs");
 const path = require("path");
 const util = require("util");
+const { GoogleSpreadsheet } = require("google-spreadsheet");
+const AfricasTalking = require("africastalking");
 const textToSpeech = require("@google-cloud/text-to-speech");
 const twilio = require("twilio");
 const { v4: uuidv4 } = require("uuid");
-const XLSX = require("xlsx");
 
 const app = express();
 app.use(cors());
-app.use(express.json({ limit: "10mb" }));
+app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// --------------------------------------------------
-// CONFIG
-// --------------------------------------------------
-const BASE_URL =
-  process.env.BASE_URL || "https://ai-call-assistant-znyw.onrender.com";
+// ---------------- CONFIG ----------------
+const BASE_URL = process.env.BASE_URL;
 const TMP_DIR = __dirname;
-const RESP_FILE = path.join(TMP_DIR, "responses.xlsx");
 
-// --------------------------------------------------
-// GOOGLE TTS CLIENT
-// --------------------------------------------------
+// ---------------- PROVIDERS ----------------
+const AT = AfricasTalking({
+  apiKey: process.env.AT_API_KEY,
+  username: process.env.AT_USERNAME
+});
+const atVoice = AT.VOICE;
+const atSMS = AT.SMS;
+
+const twilioClient = twilio(
+  process.env.TWILIO_ACCOUNT_SID,
+  process.env.TWILIO_AUTH_TOKEN
+);
+
 const ttsClient = new textToSpeech.TextToSpeechClient();
 
-// --------------------------------------------------
-// HELPERS
-// --------------------------------------------------
-function cleanText(t) {
-  if (!t) return "";
-  return String(t).replace(/[&<>"]/g, "");
-}
+// ---------------- GOOGLE SHEET ----------------
+const SHEET_ID = process.env.GOOGLE_SHEET_ID;
 
-// ⭐ Human + Telephony-optimized SSML
-function buildSSML(script) {
-  const question =
-    "If we go ahead and reserve a slot for you, would you be available? " +
-    "Press 1 if you are available, or press 2 if you are not.";
-
-  return `
-    <speak>
-      <prosody rate="95%" pitch="-0.3st">
-        <break time="250ms"/>
-        ${script}
-        <break time="450ms"/>
-        <emphasis level="moderate">${question}</emphasis>
-        <break time="300ms"/>
-      </prosody>
-    </speak>
-  `;
-}
-
-// --------------------------------------------------
-// EXCEL LOGGER
-// --------------------------------------------------
-function appendResponse(phone, status, timestamp) {
-  let data = [];
-
-  if (fs.existsSync(RESP_FILE)) {
-    const wb = XLSX.readFile(RESP_FILE);
-    const ws = wb.Sheets[wb.SheetNames[0]];
-    data = XLSX.utils.sheet_to_json(ws);
-  }
-
-  data.push({
-    Phone: phone,
-    Status: status,
-    Timestamp: timestamp
+async function logToSheet(number, response) {
+  const doc = new GoogleSpreadsheet(SHEET_ID);
+  await doc.useServiceAccountAuth({
+    client_email: process.env.GOOGLE_CLIENT_EMAIL,
+    private_key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, "\n")
   });
+  await doc.loadInfo();
+  const sheet = doc.sheetsByIndex[0];
 
-  const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.json_to_sheet(data);
-  XLSX.utils.book_append_sheet(wb, ws, "Responses");
-  XLSX.writeFile(wb, RESP_FILE);
+  await sheet.addRow({
+    number,
+    time: new Date().toISOString(),
+    response
+  });
 }
 
-// --------------------------------------------------
-// STATE (Editable from dashboard)
-// --------------------------------------------------
-let callScript = "Hello, this is your call assistant.";
-let smsTemplate =
-  "Your reservation has been received. We will contact you shortly.";
+// ---------------- HELPERS ----------------
+function isNigeria(number) {
+  return number.startsWith("+234");
+}
 
-// --------------------------------------------------
-// DASHBOARD ENDPOINTS
-// --------------------------------------------------
+function cleanText(t) {
+  return String(t || "").replace(/[&<>"]/g, "");
+}
+
+function buildSSML(script) {
+  return `
+  <speak>
+    <prosody rate="95%" pitch="-0.3st">
+      <break time="250ms"/>
+      ${script}
+      <break time="400ms"/>
+      <emphasis level="moderate">
+        If we go ahead and reserve a slot for you,
+        press 1 if available or press 2 if not.
+      </emphasis>
+    </prosody>
+  </speak>`;
+}
+
+// ---------------- STATE ----------------
+let CALL_SCRIPT = "Super congratulations. You have been selected.";
+let SMS_TEMPLATE = "Your reservation is confirmed. Details will follow.";
+
+// ---------------- API ----------------
 app.post("/api/script", (req, res) => {
-  callScript = cleanText(req.body.script || "");
+  CALL_SCRIPT = cleanText(req.body.script);
   res.json({ success: true });
 });
 
 app.post("/api/sms-template", (req, res) => {
-  smsTemplate = req.body.sms || smsTemplate;
+  SMS_TEMPLATE = req.body.sms;
   res.json({ success: true });
 });
 
-// --------------------------------------------------
-// MAKE CALL
-// --------------------------------------------------
+// ---------------- MAKE CALL (HYBRID) ----------------
 app.post("/api/makecall", async (req, res) => {
+  const number = req.body.to;
+
   try {
-    const client = twilio(
-      process.env.TWILIO_ACCOUNT_SID,
-      process.env.TWILIO_AUTH_TOKEN
-    );
+    if (isNigeria(number)) {
+      await atVoice.call({
+        callFrom: process.env.AT_CALLER_ID,
+        callTo: [number],
+        url: `${BASE_URL}/voice-at`
+      });
+    } else {
+      await twilioClient.calls.create({
+        to: number,
+        from: process.env.TWILIO_PHONE_NUMBER,
+        url: `${BASE_URL}/voice-twilio`,
+        statusCallback: `${BASE_URL}/call-status`,
+        statusCallbackEvent: ["completed"],
+        statusCallbackMethod: "POST"
+      });
+    }
 
-    const call = await client.calls.create({
-      to: req.body.to,
-      from: process.env.TWILIO_PHONE_NUMBER,
-      url: `${BASE_URL}/voice`
-    });
-
-    res.json({ success: true, sid: call.sid });
-  } catch (err) {
-    console.error("TWILIO ERROR:", err);
-    res.status(500).json({ success: false, error: err.message });
+    res.json({ success: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ success: false });
   }
 });
 
-// --------------------------------------------------
-// TWILIO VOICE WEBHOOK
-// --------------------------------------------------
-app.post("/voice", async (req, res) => {
+// ---------------- TWILIO VOICE ----------------
+app.post("/voice-twilio", async (req, res) => {
   const VoiceResponse = twilio.twiml.VoiceResponse;
   const twiml = new VoiceResponse();
 
   try {
-    const ssml = buildSSML(cleanText(callScript));
-
+    const ssml = buildSSML(CALL_SCRIPT);
     const [tts] = await ttsClient.synthesizeSpeech({
       input: { ssml },
-      voice: {
-        languageCode: "en-US",
-        name: "en-US-Neural2-F",
-        ssmlGender: "FEMALE"
-      },
+      voice: { languageCode: "en-US", name: "en-US-Neural2-F" },
       audioConfig: {
         audioEncoding: "MULAW",
         sampleRateHertz: 8000,
-        speakingRate: 1.0,
         volumeGainDb: 6.0,
         effectsProfileId: ["telephony-class-application"]
       }
     });
 
-    const filename = `voice-${uuidv4()}.wav`;
-    const filepath = path.join(TMP_DIR, filename);
-
-    await util.promisify(fs.writeFile)(filepath, tts.audioContent, "binary");
+    const file = `voice-${uuidv4()}.wav`;
+    const filePath = path.join(TMP_DIR, file);
+    await util.promisify(fs.writeFile)(filePath, tts.audioContent, "binary");
 
     const gather = twiml.gather({
       numDigits: 1,
       action: `${BASE_URL}/gather`,
       method: "POST",
-      timeout: 8
+      timeout: 6
     });
 
-    gather.play(`${BASE_URL}/${filename}`);
+    gather.play(`${BASE_URL}/${file}`);
+    twiml.say("Goodbye.");
 
-    twiml.say("We did not receive any input. Goodbye.");
-
-    res.type("text/xml");
-    res.send(twiml.toString());
-
-    setTimeout(() => fs.unlink(filepath, () => {}), 60000);
-  } catch (err) {
-    console.error("TTS ERROR:", err);
-    twiml.say("Sorry, there was an error generating the voice.");
-    res.type("text/xml");
-    res.send(twiml.toString());
+    res.type("text/xml").send(twiml.toString());
+    setTimeout(() => fs.unlink(filePath, () => {}), 60000);
+  } catch {
+    twiml.say("Sorry, an error occurred.");
+    res.type("text/xml").send(twiml.toString());
   }
 });
 
-// --------------------------------------------------
-// GATHER RESPONSE (✅ FIXED: uses req.body.To)
-// --------------------------------------------------
+// ---------------- GATHER RESPONSE ----------------
 app.post("/gather", async (req, res) => {
   const digit = req.body.Digits;
-  const prospect = req.body.To; // ✅ CORRECT NUMBER
-  const timestamp = new Date().toISOString();
+  const number = req.body.To;
 
-  const status = digit === "1" ? "Yes" : digit === "2" ? "No" : "Invalid";
-  appendResponse(prospect, status, timestamp);
+  const response =
+    digit === "1" ? "yes" :
+    digit === "2" ? "no" :
+    "didn't respond";
+
+  await logToSheet(number, response);
+
+  if (digit === "1") {
+    if (isNigeria(number)) {
+      await atSMS.send({ to: [number], message: SMS_TEMPLATE });
+    } else {
+      await twilioClient.messages.create({
+        to: number,
+        from: process.env.TWILIO_PHONE_NUMBER,
+        body: SMS_TEMPLATE
+      });
+    }
+  }
 
   const VoiceResponse = twilio.twiml.VoiceResponse;
   const twiml = new VoiceResponse();
+  twiml.say("Thank you.");
+  res.type("text/xml").send(twiml.toString());
+});
 
-  if (digit === "1") {
-    const client = twilio(
-      process.env.TWILIO_ACCOUNT_SID,
-      process.env.TWILIO_AUTH_TOKEN
-    );
-
-    await client.messages.create({
-      to: prospect,
-      from: process.env.TWILIO_PHONE_NUMBER,
-      body: smsTemplate
-    });
-
-    twiml.say(
-      "Thank you. We have noted your availability. You will receive a reservation message shortly."
-    );
-  } else if (digit === "2") {
-    twiml.say("Thank you. We have noted that you are not available.");
-  } else {
-    twiml.say("Invalid input received. Goodbye.");
+// ---------------- DIDN'T PICK ----------------
+app.post("/call-status", async (req, res) => {
+  const status = req.body.CallStatus;
+  if (["no-answer", "busy", "failed"].includes(status)) {
+    await logToSheet(req.body.To, "didn't pick");
   }
-
-  res.type("text/xml");
-  res.send(twiml.toString());
+  res.sendStatus(200);
 });
 
-// --------------------------------------------------
-// VIEW EXCEL IN BROWSER
-// --------------------------------------------------
-app.get("/api/view-reservations", (req, res) => {
-  if (!fs.existsSync(RESP_FILE))
-    return res.send("<h2>No responses yet.</h2>");
-
-  const wb = XLSX.readFile(RESP_FILE);
-  const ws = wb.Sheets[wb.SheetNames[0]];
-  res.send(XLSX.utils.sheet_to_html(ws));
-});
-
-// --------------------------------------------------
-// STATIC + HEALTH
-// --------------------------------------------------
+// ---------------- START ----------------
 app.use(express.static(TMP_DIR));
-app.get("/", (req, res) => res.json({ status: "SERVER_RUNNING" }));
-
-// --------------------------------------------------
-// START SERVER
-// --------------------------------------------------
 app.listen(process.env.PORT || 3000, () =>
-  console.log("SERVER RUNNING — ALL FIXES APPLIED")
+  console.log("Hybrid AI Call Assistant running")
 );
