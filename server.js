@@ -32,7 +32,7 @@ const twilioClient = twilio(
   TWILIO_AUTH_TOKEN
 );
 
-// Google Sheets (NO credentials.json)
+// Google Sheets (ENV JSON)
 const auth = new google.auth.GoogleAuth({
   credentials: JSON.parse(process.env.GOOGLE_CREDENTIALS),
   scopes: ["https://www.googleapis.com/auth/spreadsheets"],
@@ -52,7 +52,7 @@ async function logToSheets(number, response) {
   try {
     await sheets.spreadsheets.values.append({
       spreadsheetId: SPREADSHEET_ID,
-      range: "AI CALL LOGS!A:C",
+      range: "Sheet1!A:C",
       valueInputOption: "RAW",
       requestBody: {
         values: [[number, new Date().toISOString(), response]],
@@ -144,18 +144,15 @@ app.post("/at-voice", async (req, res) => {
   const caller = req.body.from;
   const digits = req.body.digits;
 
-  // If user responded
   if (digits) {
     let status;
 
     if (digits === "1") {
       status = "YES";
-
       await sendSMSHybrid(
         caller,
-        "Super congratulations! Your reservation has been confirmed. Details will follow shortly."
+        "Super congratulations! Your reservation has been confirmed."
       );
-
     } else if (digits === "2") {
       status = "NO";
     } else {
@@ -177,14 +174,11 @@ app.post("/at-voice", async (req, res) => {
     `);
   }
 
-  // First interaction
   res.send(`
     <Response>
-      <Say voice="woman">
+      <Say>
         Super congratulations!
-        If we go ahead and reserve a slot for you,
-        press 1 if you are available,
-        press 2 if you are not available.
+        Press 1 if available, press 2 if not.
       </Say>
       <GetDigits timeout="10" callbackUrl="${BASE_URL}/at-voice" />
     </Response>
@@ -192,7 +186,7 @@ app.post("/at-voice", async (req, res) => {
 });
 
 // ===============================
-// TWILIO FALLBACK VOICE
+// TWILIO VOICE (FALLBACK)
 // ===============================
 app.post("/twilio-voice", (req, res) => {
   res.type("text/xml");
@@ -201,7 +195,7 @@ app.post("/twilio-voice", (req, res) => {
     <Response>
       <Say>
         Super congratulations!
-        Press 1 if you are available, press 2 if not.
+        Press 1 if available, press 2 if not.
       </Say>
       <Gather numDigits="1" action="/twilio-response" method="POST" />
     </Response>
@@ -218,12 +212,10 @@ app.post("/twilio-response", async (req, res) => {
 
   if (digit === "1") {
     status = "YES";
-
     await sendSMSHybrid(
       caller,
       "Super congratulations! Your reservation has been confirmed."
     );
-
   } else if (digit === "2") {
     status = "NO";
   } else {
@@ -250,26 +242,78 @@ async function retryCall(number) {
 }
 
 // ===============================
-// API ROUTES
+// SINGLE CALL
 // ===============================
 app.post("/api/makecall", async (req, res) => {
   const { to } = req.body;
 
   const provider = await makeCallHybrid(to);
 
-  // Retry if no response
   setTimeout(() => {
     const record = callLogs.find(log => log.number === to);
-
-    if (!record) {
-      retryCall(to);
-    }
+    if (!record) retryCall(to);
   }, 2 * 60 * 1000);
 
   res.json({ success: true, provider });
 });
 
-// View logs
+// ===============================
+// BULK CALL
+// ===============================
+app.post("/api/bulk-call", async (req, res) => {
+  const { numbers } = req.body;
+
+  if (!Array.isArray(numbers)) {
+    return res.status(400).json({ error: "Numbers must be an array" });
+  }
+
+  for (let i = 0; i < numbers.length; i++) {
+    setTimeout(async () => {
+      console.log("📞 Calling:", numbers[i]);
+      await makeCallHybrid(numbers[i]);
+    }, i * 5000);
+  }
+
+  res.json({ success: true, total: numbers.length });
+});
+
+// ===============================
+// FOLLOW-UP SMS (YES USERS)
+// ===============================
+app.post("/api/followup-yes", async (req, res) => {
+  const yesUsers = callLogs.filter(l => l.response === "YES");
+
+  for (let user of yesUsers) {
+    await sendSMSHybrid(
+      user.number,
+      "Reminder: Your reservation is confirmed."
+    );
+  }
+
+  res.json({ success: true, sent: yesUsers.length });
+});
+
+// ===============================
+// STATS
+// ===============================
+app.get("/api/stats", (req, res) => {
+  const total = callLogs.length;
+  const yes = callLogs.filter(l => l.response === "YES").length;
+  const no = callLogs.filter(l => l.response === "NO").length;
+
+  res.json({
+    total,
+    yes,
+    no,
+    conversionRate: total
+      ? ((yes / total) * 100).toFixed(2) + "%"
+      : "0%",
+  });
+});
+
+// ===============================
+// LOGS
+// ===============================
 app.get("/api/logs", (req, res) => {
   res.json(callLogs);
 });
