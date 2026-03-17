@@ -1,3 +1,8 @@
+const path = require("path");
+
+// Serve frontend
+app.use(express.static(path.join(__dirname, "public")));
+
 const express = require("express");
 const cors = require("cors");
 const axios = require("axios");
@@ -319,7 +324,7 @@ app.get("/api/logs", (req, res) => {
 });
 
 app.get("/", (req, res) => {
-  res.send("🚀 AI Call Assistant Running");
+  res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
 // ===============================
