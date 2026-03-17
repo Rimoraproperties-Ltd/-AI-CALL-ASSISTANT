@@ -52,7 +52,7 @@ async function logToSheets(number, response) {
   try {
     await sheets.spreadsheets.values.append({
       spreadsheetId: SPREADSHEET_ID,
-      range: "Sheet1!A:C",
+      range: "AI CALL LOGS!A:C",
       valueInputOption: "RAW",
       requestBody: {
         values: [[number, new Date().toISOString(), response]],
