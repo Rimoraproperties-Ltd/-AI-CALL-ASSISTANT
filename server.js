@@ -2,7 +2,6 @@ const path = require("path");
 
 // Serve frontend
 app.use(express.static(path.join(__dirname, "public")));
-
 const express = require("express");
 const cors = require("cors");
 const axios = require("axios");
