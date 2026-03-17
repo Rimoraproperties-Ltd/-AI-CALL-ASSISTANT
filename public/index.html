@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>AI Call Dashboard</title>
+  <style>
+    body {
+      font-family: Arial;
+      background: #0f172a;
+      color: white;
+      padding: 20px;
+    }
+    h1 {
+      color: #38bdf8;
+    }
+    textarea {
+      width: 100%;
+      height: 120px;
+      margin: 10px 0;
+      padding: 10px;
+    }
+    button {
+      padding: 10px 20px;
+      margin: 5px;
+      border: none;
+      background: #38bdf8;
+      color: black;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    .card {
+      background: #1e293b;
+      padding: 15px;
+      margin-top: 20px;
+      border-radius: 10px;
+    }
+  </style>
+</head>
+<body>
+
+<h1>🚀 AI Call Campaign Dashboard</h1>
+
+<div class="card">
+  <h3>📞 Upload Numbers</h3>
+  <textarea id="numbers" placeholder="+2348011111111, +2348022222222"></textarea>
+  <button onclick="startCampaign()">Start Campaign</button>
+</div>
+
+<div class="card">
+  <h3>📊 Stats</h3>
+  <button onclick="loadStats()">Refresh Stats</button>
+  <p>Total: <span id="total">0</span></p>
+  <p>YES: <span id="yes">0</span></p>
+  <p>NO: <span id="no">0</span></p>
+  <p>Conversion: <span id="rate">0%</span></p>
+</div>
+
+<div class="card">
+  <h3>📩 Follow-Up</h3>
+  <button onclick="sendFollowUp()">Send SMS to YES Users</button>
+</div>
+
+<script>
+const BASE_URL = "https://your-render-url.onrender.com";
+
+// START CAMPAIGN
+async function startCampaign() {
+  const raw = document.getElementById("numbers").value;
+  const numbers = raw.split(",").map(n => n.trim());
+
+  await fetch(BASE_URL + "/api/bulk-call", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ numbers })
+  });
+
+  alert("Campaign started!");
+}
+
+// LOAD STATS
+async function loadStats() {
+  const res = await fetch(BASE_URL + "/api/stats");
+  const data = await res.json();
+
+  document.getElementById("total").innerText = data.total;
+  document.getElementById("yes").innerText = data.yes;
+  document.getElementById("no").innerText = data.no;
+  document.getElementById("rate").innerText = data.conversionRate;
+}
+
+// FOLLOW-UP
+async function sendFollowUp() {
+  await fetch(BASE_URL + "/api/followup-yes", {
+    method: "POST"
+  });
+
+  alert("Follow-up SMS sent!");
+}
+</script>
+
+</body>
+</html>
