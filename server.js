@@ -1,4 +1,3 @@
-require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const axios = require("axios");
@@ -11,7 +10,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
 // ===============================
-// ENV VARIABLES
+// ENV VARIABLES (FROM RENDER)
 // ===============================
 const BASE_URL = process.env.BASE_URL;
 
@@ -33,16 +32,16 @@ const twilioClient = twilio(
   TWILIO_AUTH_TOKEN
 );
 
-// Google Sheets auth
+// Google Sheets (NO credentials.json)
 const auth = new google.auth.GoogleAuth({
-  keyFile: "credentials.json", // place in root
+  credentials: JSON.parse(process.env.GOOGLE_CREDENTIALS),
   scopes: ["https://www.googleapis.com/auth/spreadsheets"],
 });
 
 const sheets = google.sheets({ version: "v4", auth });
 
 // ===============================
-// MEMORY STORE (temporary)
+// MEMORY STORE
 // ===============================
 let callLogs = [];
 
@@ -86,10 +85,10 @@ async function sendSMSHybrid(to, message) {
       }
     );
 
-    console.log("✅ SMS sent via Africa's Talking");
+    console.log("✅ SMS via Africa's Talking");
     return "AT";
   } catch (err) {
-    console.log("⚠️ AT SMS failed, switching to Twilio");
+    console.log("⚠️ AT SMS failed → Twilio fallback");
 
     await twilioClient.messages.create({
       body: message,
@@ -124,7 +123,7 @@ async function makeCallHybrid(to) {
     console.log("📞 Call via Africa's Talking");
     return "AT";
   } catch (err) {
-    console.log("⚠️ AT Call failed, switching to Twilio");
+    console.log("⚠️ AT Call failed → Twilio fallback");
 
     await twilioClient.calls.create({
       to,
@@ -163,14 +162,12 @@ app.post("/at-voice", async (req, res) => {
       status = "INVALID";
     }
 
-    // Save locally
     callLogs.push({
       number: caller,
       response: status,
       time: new Date().toISOString(),
     });
 
-    // Save to Google Sheets
     await logToSheets(caller, status);
 
     return res.send(`
@@ -260,7 +257,7 @@ app.post("/api/makecall", async (req, res) => {
 
   const provider = await makeCallHybrid(to);
 
-  // Retry if no response after 2 mins
+  // Retry if no response
   setTimeout(() => {
     const record = callLogs.find(log => log.number === to);
 
