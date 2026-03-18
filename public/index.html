@@ -1,102 +1,143 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>AI Call Dashboard</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>AI Call Assistant - Rowaiye Media</title>
+
   <style>
     body {
-      font-family: Arial;
-      background: #0f172a;
-      color: white;
-      padding: 20px;
+      font-family: Arial, sans-serif;
+      background: #0b0f19;
+      color: #fff;
+      text-align: center;
+      padding: 40px;
     }
+
     h1 {
-      color: #38bdf8;
+      color: gold;
     }
-    textarea {
-      width: 100%;
-      height: 120px;
+
+    input {
+      width: 80%;
+      padding: 12px;
       margin: 10px 0;
-      padding: 10px;
-    }
-    button {
-      padding: 10px 20px;
-      margin: 5px;
+      border-radius: 8px;
       border: none;
-      background: #38bdf8;
-      color: black;
-      cursor: pointer;
-      font-weight: bold;
+      outline: none;
     }
+
+    button {
+      padding: 12px 20px;
+      border: none;
+      border-radius: 8px;
+      background: gold;
+      color: #000;
+      font-weight: bold;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+
+    button:hover {
+      opacity: 0.8;
+    }
+
     .card {
-      background: #1e293b;
-      padding: 15px;
+      background: #121826;
+      padding: 20px;
       margin-top: 20px;
-      border-radius: 10px;
+      border-radius: 12px;
     }
   </style>
 </head>
+
 <body>
 
-<h1>🚀 AI Call Campaign Dashboard</h1>
+  <h1>📞 AI Call Assistant</h1>
+  <p>Rowaiye Media Campaign System</p>
 
-<div class="card">
-  <h3>📞 Upload Numbers</h3>
-  <textarea id="numbers" placeholder="+2348011111111, +2348022222222"></textarea>
-  <button onclick="startCampaign()">Start Campaign</button>
-</div>
+  <div class="card">
+    <h3>Enter Phone Numbers</h3>
+    <input 
+      type="text" 
+      id="numbers" 
+      placeholder="+2348012345678,+2348098765432"
+    />
+    <br/>
+    <button onclick="startCampaign()">Start Campaign</button>
+  </div>
 
-<div class="card">
-  <h3>📊 Stats</h3>
-  <button onclick="loadStats()">Refresh Stats</button>
-  <p>Total: <span id="total">0</span></p>
-  <p>YES: <span id="yes">0</span></p>
-  <p>NO: <span id="no">0</span></p>
-  <p>Conversion: <span id="rate">0%</span></p>
-</div>
+  <div class="card">
+    <h3>📊 Campaign Stats</h3>
+    <p>Total Calls: <span id="total">0</span></p>
+    <p>YES Responses: <span id="yes">0</span></p>
+    <p>NO Responses: <span id="no">0</span></p>
+    <p>Conversion Rate: <span id="rate">0%</span></p>
 
-<div class="card">
-  <h3>📩 Follow-Up</h3>
-  <button onclick="sendFollowUp()">Send SMS to YES Users</button>
-</div>
+    <button onclick="loadStats()">Refresh Stats</button>
+  </div>
 
-<script>
-const BASE_URL = "https://your-render-url.onrender.com";
+  <script>
+    const BASE_URL = "https://ai-call-assistant-znyw.onrender.com";
 
-// START CAMPAIGN
-async function startCampaign() {
-  const raw = document.getElementById("numbers").value;
-  const numbers = raw.split(",").map(n => n.trim());
+    // ===============================
+    // START CAMPAIGN
+    // ===============================
+    async function startCampaign() {
+      try {
+        const raw = document.getElementById("numbers").value;
 
-  await fetch(BASE_URL + "/api/bulk-call", {
-    method: "POST",
-    headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({ numbers })
-  });
+        if (!raw) {
+          alert("Please enter phone numbers");
+          return;
+        }
 
-  alert("Campaign started!");
-}
+        const numbers = raw.split(",").map(n => n.trim());
 
-// LOAD STATS
-async function loadStats() {
-  const res = await fetch(BASE_URL + "/api/stats");
-  const data = await res.json();
+        console.log("📤 Sending numbers:", numbers);
 
-  document.getElementById("total").innerText = data.total;
-  document.getElementById("yes").innerText = data.yes;
-  document.getElementById("no").innerText = data.no;
-  document.getElementById("rate").innerText = data.conversionRate;
-}
+        const res = await fetch(BASE_URL + "/api/bulk-call", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ numbers })
+        });
 
-// FOLLOW-UP
-async function sendFollowUp() {
-  await fetch(BASE_URL + "/api/followup-yes", {
-    method: "POST"
-  });
+        const data = await res.json();
 
-  alert("Follow-up SMS sent!");
-}
-</script>
+        console.log("✅ Server response:", data);
+
+        alert("🚀 Campaign started!");
+      } catch (err) {
+        console.error("❌ Error:", err);
+        alert("Error starting campaign. Check console.");
+      }
+    }
+
+    // ===============================
+    // LOAD STATS
+    // ===============================
+    async function loadStats() {
+      try {
+        const res = await fetch(BASE_URL + "/api/stats");
+        const data = await res.json();
+
+        console.log("📊 Stats:", data);
+
+        document.getElementById("total").innerText = data.total;
+        document.getElementById("yes").innerText = data.yes;
+        document.getElementById("no").innerText = data.no;
+        document.getElementById("rate").innerText = data.conversionRate;
+
+      } catch (err) {
+        console.error("❌ Stats error:", err);
+      }
+    }
+
+    // Auto load stats on page load
+    loadStats();
+  </script>
 
 </body>
 </html>
