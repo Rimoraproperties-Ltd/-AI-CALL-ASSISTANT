@@ -1,20 +1,29 @@
-const path = require("path");
-
-// Serve frontend
-app.use(express.static(path.join(__dirname, "public")));
 const express = require("express");
 const cors = require("cors");
 const axios = require("axios");
 const twilio = require("twilio");
 const { google } = require("googleapis");
+const path = require("path");
 
+// ===============================
+// INIT APP FIRST (FIXED ERROR)
+// ===============================
 const app = express();
+
+// ===============================
+// MIDDLEWARE
+// ===============================
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
 // ===============================
-// ENV VARIABLES (FROM RENDER)
+// SERVE FRONTEND (IMPORTANT)
+// ===============================
+app.use(express.static(path.join(__dirname, "public")));
+
+// ===============================
+// ENV VARIABLES
 // ===============================
 const BASE_URL = process.env.BASE_URL;
 
@@ -36,7 +45,7 @@ const twilioClient = twilio(
   TWILIO_AUTH_TOKEN
 );
 
-// Google Sheets (ENV JSON)
+// Google Sheets
 const auth = new google.auth.GoogleAuth({
   credentials: JSON.parse(process.env.GOOGLE_CREDENTIALS),
   scopes: ["https://www.googleapis.com/auth/spreadsheets"],
@@ -63,14 +72,14 @@ async function logToSheets(number, response) {
       },
     });
 
-    console.log("✅ Logged to Google Sheets");
-  } catch (error) {
-    console.error("❌ Sheets error:", error.message);
+    console.log("✅ Logged to Sheets");
+  } catch (err) {
+    console.error("❌ Sheets error:", err.message);
   }
 }
 
 // ===============================
-// HYBRID SMS
+// SMS (HYBRID)
 // ===============================
 async function sendSMSHybrid(to, message) {
   try {
@@ -89,10 +98,10 @@ async function sendSMSHybrid(to, message) {
       }
     );
 
-    console.log("✅ SMS via Africa's Talking");
+    console.log("✅ SMS via AT");
     return "AT";
-  } catch (err) {
-    console.log("⚠️ AT SMS failed → Twilio fallback");
+  } catch {
+    console.log("⚠️ AT failed → Twilio");
 
     await twilioClient.messages.create({
       body: message,
@@ -105,7 +114,7 @@ async function sendSMSHybrid(to, message) {
 }
 
 // ===============================
-// HYBRID CALL
+// CALL (HYBRID)
 // ===============================
 async function makeCallHybrid(to) {
   try {
@@ -124,10 +133,10 @@ async function makeCallHybrid(to) {
       }
     );
 
-    console.log("📞 Call via Africa's Talking");
+    console.log("📞 Call via AT");
     return "AT";
-  } catch (err) {
-    console.log("⚠️ AT Call failed → Twilio fallback");
+  } catch {
+    console.log("⚠️ AT failed → Twilio");
 
     await twilioClient.calls.create({
       to,
@@ -140,7 +149,7 @@ async function makeCallHybrid(to) {
 }
 
 // ===============================
-// AFRICA'S TALKING VOICE WEBHOOK
+// AFRICA'S TALKING IVR
 // ===============================
 app.post("/at-voice", async (req, res) => {
   res.type("text/xml");
@@ -155,7 +164,7 @@ app.post("/at-voice", async (req, res) => {
       status = "YES";
       await sendSMSHybrid(
         caller,
-        "Super congratulations! Your reservation has been confirmed."
+        "Super congratulations! Your reservation is confirmed."
       );
     } else if (digits === "2") {
       status = "NO";
@@ -190,7 +199,7 @@ app.post("/at-voice", async (req, res) => {
 });
 
 // ===============================
-// TWILIO VOICE (FALLBACK)
+// TWILIO FALLBACK IVR
 // ===============================
 app.post("/twilio-voice", (req, res) => {
   res.type("text/xml");
@@ -218,7 +227,7 @@ app.post("/twilio-response", async (req, res) => {
     status = "YES";
     await sendSMSHybrid(
       caller,
-      "Super congratulations! Your reservation has been confirmed."
+      "Super congratulations! Your reservation is confirmed."
     );
   } else if (digit === "2") {
     status = "NO";
@@ -238,25 +247,12 @@ app.post("/twilio-response", async (req, res) => {
 });
 
 // ===============================
-// RETRY LOGIC
-// ===============================
-async function retryCall(number) {
-  console.log("🔁 Retrying:", number);
-  await makeCallHybrid(number);
-}
-
-// ===============================
 // SINGLE CALL
 // ===============================
 app.post("/api/makecall", async (req, res) => {
   const { to } = req.body;
 
   const provider = await makeCallHybrid(to);
-
-  setTimeout(() => {
-    const record = callLogs.find(log => log.number === to);
-    if (!record) retryCall(to);
-  }, 2 * 60 * 1000);
 
   res.json({ success: true, provider });
 });
@@ -271,18 +267,15 @@ app.post("/api/bulk-call", async (req, res) => {
     return res.status(400).json({ error: "Numbers must be an array" });
   }
 
-  for (let i = 0; i < numbers.length; i++) {
-    setTimeout(async () => {
-      console.log("📞 Calling:", numbers[i]);
-      await makeCallHybrid(numbers[i]);
-    }, i * 5000);
-  }
+  numbers.forEach((num, i) => {
+    setTimeout(() => makeCallHybrid(num), i * 5000);
+  });
 
   res.json({ success: true, total: numbers.length });
 });
 
 // ===============================
-// FOLLOW-UP SMS (YES USERS)
+// FOLLOW-UP SMS
 // ===============================
 app.post("/api/followup-yes", async (req, res) => {
   const yesUsers = callLogs.filter(l => l.response === "YES");
@@ -322,6 +315,9 @@ app.get("/api/logs", (req, res) => {
   res.json(callLogs);
 });
 
+// ===============================
+// ROOT (LOAD DASHBOARD)
+// ===============================
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
