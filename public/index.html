@@ -1,10 +1,12 @@
 <!DOCTYPE html>
 <html>
 <head>
+
 <meta charset="UTF-8">
 <title>AI Call Assistant</title>
 
 <style>
+
 body{
 font-family:Arial;
 background:#0f172a;
@@ -43,6 +45,7 @@ color:black;
 font-weight:bold;
 cursor:pointer;
 }
+
 </style>
 
 </head>
@@ -58,6 +61,7 @@ cursor:pointer;
 placeholder="Write what the AI should say during the call"></textarea>
 </div>
 
+
 <div class="card">
 <h3>Phone Numbers</h3>
 
@@ -65,9 +69,11 @@ placeholder="Write what the AI should say during the call"></textarea>
 placeholder="+2348012345678,+2348098765432">
 
 <br>
+
 <button onclick="startCampaign()">Start Campaign</button>
 
 </div>
+
 
 <div class="card">
 
@@ -82,9 +88,11 @@ placeholder="+2348012345678,+2348098765432">
 
 </div>
 
+
 <script>
 
 const BASE_URL = "https://ai-call-assistant-znyw.onrender.com";
+
 
 async function startCampaign(){
 
@@ -96,15 +104,15 @@ alert("Enter numbers");
 return;
 }
 
-const numbers = raw.split(",").map(n=>n.trim());
+const numbers = raw.split(",").map(n => n.trim());
 
-await fetch(BASE_URL+"/api/script",{
+await fetch(BASE_URL + "/api/script",{
 method:"POST",
 headers:{"Content-Type":"application/json"},
 body:JSON.stringify({script})
 });
 
-await fetch(BASE_URL+"/api/bulk-call",{
+await fetch(BASE_URL + "/api/bulk-call",{
 method:"POST",
 headers:{"Content-Type":"application/json"},
 body:JSON.stringify({numbers})
@@ -114,11 +122,23 @@ alert("Campaign Started");
 
 }
 
+
+
 async function loadStats(){
 
-const res = await fetch(BASE_URL+"/api/stats");
+const res = await fetch(BASE_URL + "/api/stats");
 const data = await res.json();
 
 document.getElementById("total").innerText = data.total;
 document.getElementById("yes").innerText = data.yes;
-document.getElementById("no").innerText
+document.getElementById("no").innerText = data.no;
+document.getElementById("rate").innerText = data.conversionRate;
+
+}
+
+loadStats()
+
+</script>
+
+</body>
+</html>
