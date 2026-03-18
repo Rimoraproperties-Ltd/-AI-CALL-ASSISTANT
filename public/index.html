@@ -1,143 +1,124 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>AI Call Assistant - Rowaiye Media</title>
+<meta charset="UTF-8">
+<title>AI Call Assistant</title>
 
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      background: #0b0f19;
-      color: #fff;
-      text-align: center;
-      padding: 40px;
-    }
+<style>
+body{
+font-family:Arial;
+background:#0f172a;
+color:white;
+text-align:center;
+padding:40px;
+}
 
-    h1 {
-      color: gold;
-    }
+h1{
+color:gold;
+}
 
-    input {
-      width: 80%;
-      padding: 12px;
-      margin: 10px 0;
-      border-radius: 8px;
-      border: none;
-      outline: none;
-    }
+.card{
+background:#1e293b;
+padding:20px;
+margin:20px auto;
+width:80%;
+border-radius:10px;
+}
 
-    button {
-      padding: 12px 20px;
-      border: none;
-      border-radius: 8px;
-      background: gold;
-      color: #000;
-      font-weight: bold;
-      cursor: pointer;
-      margin-top: 10px;
-    }
+textarea,input{
+width:90%;
+padding:10px;
+margin-top:10px;
+border-radius:6px;
+border:none;
+}
 
-    button:hover {
-      opacity: 0.8;
-    }
+button{
+padding:10px 20px;
+margin-top:10px;
+border:none;
+border-radius:6px;
+background:gold;
+color:black;
+font-weight:bold;
+cursor:pointer;
+}
+</style>
 
-    .card {
-      background: #121826;
-      padding: 20px;
-      margin-top: 20px;
-      border-radius: 12px;
-    }
-  </style>
 </head>
 
 <body>
 
-  <h1>📞 AI Call Assistant</h1>
-  <p>Rowaiye Media Campaign System</p>
+<h1>AI Call Campaign System</h1>
 
-  <div class="card">
-    <h3>Enter Phone Numbers</h3>
-    <input 
-      type="text" 
-      id="numbers" 
-      placeholder="+2348012345678,+2348098765432"
-    />
-    <br/>
-    <button onclick="startCampaign()">Start Campaign</button>
-  </div>
+<div class="card">
+<h3>Call Script</h3>
 
-  <div class="card">
-    <h3>📊 Campaign Stats</h3>
-    <p>Total Calls: <span id="total">0</span></p>
-    <p>YES Responses: <span id="yes">0</span></p>
-    <p>NO Responses: <span id="no">0</span></p>
-    <p>Conversion Rate: <span id="rate">0%</span></p>
+<textarea id="script" rows="4"
+placeholder="Write what the AI should say during the call"></textarea>
+</div>
 
-    <button onclick="loadStats()">Refresh Stats</button>
-  </div>
+<div class="card">
+<h3>Phone Numbers</h3>
 
-  <script>
-    const BASE_URL = "https://ai-call-assistant-znyw.onrender.com";
+<input id="numbers"
+placeholder="+2348012345678,+2348098765432">
 
-    // ===============================
-    // START CAMPAIGN
-    // ===============================
-    async function startCampaign() {
-      try {
-        const raw = document.getElementById("numbers").value;
+<br>
+<button onclick="startCampaign()">Start Campaign</button>
 
-        if (!raw) {
-          alert("Please enter phone numbers");
-          return;
-        }
+</div>
 
-        const numbers = raw.split(",").map(n => n.trim());
+<div class="card">
 
-        console.log("📤 Sending numbers:", numbers);
+<h3>Campaign Stats</h3>
 
-        const res = await fetch(BASE_URL + "/api/bulk-call", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({ numbers })
-        });
+<p>Total Calls: <span id="total">0</span></p>
+<p>YES: <span id="yes">0</span></p>
+<p>NO: <span id="no">0</span></p>
+<p>Conversion: <span id="rate">0%</span></p>
 
-        const data = await res.json();
+<button onclick="loadStats()">Refresh Stats</button>
 
-        console.log("✅ Server response:", data);
+</div>
 
-        alert("🚀 Campaign started!");
-      } catch (err) {
-        console.error("❌ Error:", err);
-        alert("Error starting campaign. Check console.");
-      }
-    }
+<script>
 
-    // ===============================
-    // LOAD STATS
-    // ===============================
-    async function loadStats() {
-      try {
-        const res = await fetch(BASE_URL + "/api/stats");
-        const data = await res.json();
+const BASE_URL = "https://ai-call-assistant-znyw.onrender.com";
 
-        console.log("📊 Stats:", data);
+async function startCampaign(){
 
-        document.getElementById("total").innerText = data.total;
-        document.getElementById("yes").innerText = data.yes;
-        document.getElementById("no").innerText = data.no;
-        document.getElementById("rate").innerText = data.conversionRate;
+const raw = document.getElementById("numbers").value;
+const script = document.getElementById("script").value;
 
-      } catch (err) {
-        console.error("❌ Stats error:", err);
-      }
-    }
+if(!raw){
+alert("Enter numbers");
+return;
+}
 
-    // Auto load stats on page load
-    loadStats();
-  </script>
+const numbers = raw.split(",").map(n=>n.trim());
 
-</body>
-</html>
+await fetch(BASE_URL+"/api/script",{
+method:"POST",
+headers:{"Content-Type":"application/json"},
+body:JSON.stringify({script})
+});
+
+await fetch(BASE_URL+"/api/bulk-call",{
+method:"POST",
+headers:{"Content-Type":"application/json"},
+body:JSON.stringify({numbers})
+});
+
+alert("Campaign Started");
+
+}
+
+async function loadStats(){
+
+const res = await fetch(BASE_URL+"/api/stats");
+const data = await res.json();
+
+document.getElementById("total").innerText = data.total;
+document.getElementById("yes").innerText = data.yes;
+document.getElementById("no").innerText
