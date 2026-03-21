@@ -1,215 +1,227 @@
-const express = require("express")
-const cors = require("cors")
-const axios = require("axios")
-const twilio = require("twilio")
-const path = require("path")
+const express = require("express");
+const cors = require("cors");
+const axios = require("axios");
+const twilio = require("twilio");
+const path = require("path");
 
-const app = express()
+const app = express();
 
-app.use(cors())
-app.use(express.json())
-app.use(express.urlencoded({extended:false}))
+app.use(cors());
+app.use(express.json());
+app.use(express.urlencoded({ extended: false }));
 
-app.use(express.static(path.join(__dirname,"public")))
+// Serve frontend
+app.use(express.static(path.join(__dirname, "public")));
 
-const BASE_URL = process.env.BASE_URL
+// ===============================
+// ENV VARIABLES
+// ===============================
+const BASE_URL = process.env.BASE_URL;
 
-const AT_USERNAME = process.env.AT_USERNAME
-const AT_API_KEY = process.env.AT_API_KEY
-const AT_VIRTUAL_NUMBER = process.env.AT_VIRTUAL_NUMBER
+const AT_USERNAME = process.env.AT_USERNAME;
+const AT_API_KEY = process.env.AT_API_KEY;
+const AT_VIRTUAL_NUMBER = process.env.AT_VIRTUAL_NUMBER;
 
-const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID
-const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN
-const TWILIO_PHONE_NUMBER = process.env.TWILIO_PHONE_NUMBER
+const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID;
+const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN;
+const TWILIO_PHONE_NUMBER = process.env.TWILIO_PHONE_NUMBER;
 
 const twilioClient = twilio(
-TWILIO_ACCOUNT_SID,
-TWILIO_AUTH_TOKEN
-)
+  TWILIO_ACCOUNT_SID,
+  TWILIO_AUTH_TOKEN
+);
 
-let callLogs = []
-let callScript = "Hello this is your call assistant."
+// ===============================
+// MEMORY
+// ===============================
+let callLogs = [];
+let callScript = "Hello, this is your call assistant.";
 
+// ===============================
 // UPDATE SCRIPT
+// ===============================
+app.post("/api/script", (req, res) => {
+  callScript = req.body.script || callScript;
+  res.json({ success: true });
+});
 
-app.post("/api/script",(req,res)=>{
-callScript = req.body.script || callScript
-res.json({success:true})
-})
-
-
+// ===============================
 // HYBRID CALL FUNCTION
+// ===============================
+async function makeCallHybrid(to) {
+  console.log("📞 Attempting call:", to);
 
-async function makeCallHybrid(to){
+  try {
+    const response = await axios.post(
+      "https://voice.africastalking.com/call",
+      new URLSearchParams({
+        username: AT_USERNAME,
+        to: to,
+        from: AT_VIRTUAL_NUMBER,
+        callBackUrl: `${BASE_URL}/at-voice`,
+      }),
+      {
+        headers: {
+          apiKey: AT_API_KEY,
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+      }
+    );
 
-console.log("Attempting call:",to)
+    console.log("✅ AT SUCCESS:", response.data);
 
-try{
+    return "AT";
 
-await axios.post(
-"https://voice.africastalking.com/call",
+  } catch (err) {
 
-new URLSearchParams({
-username:AT_USERNAME,
-to:to,
-from:AT_VIRTUAL_NUMBER,
-callBackUrl:`${BASE_URL}/at-voice`
-}),
+    // 🔥 SHOW REAL ERROR
+    console.log("❌ AT ERROR FULL:", err.response?.data || err.message);
 
-{
-headers:{
-apiKey:AT_API_KEY,
-"Content-Type":"application/x-www-form-urlencoded"
+    // ===============================
+    // TWILIO FALLBACK
+    // ===============================
+    try {
+      await twilioClient.calls.create({
+        to: to,
+        from: TWILIO_PHONE_NUMBER,
+        url: `${BASE_URL}/twilio-voice`,
+      });
+
+      console.log("✅ Twilio fallback success");
+
+      return "Twilio";
+
+    } catch (twilioErr) {
+
+      console.log("❌ Twilio also failed:", twilioErr.message);
+
+      return "FAILED";
+    }
+  }
 }
-})
 
-console.log("AT call success")
-
-return "AT"
-
-}catch(err){
-
-console.log("AT failed → Twilio fallback")
-
-await twilioClient.calls.create({
-to:to,
-from:TWILIO_PHONE_NUMBER,
-url:`${BASE_URL}/twilio-voice`
-})
-
-return "Twilio"
-
-}
-
-}
-
-
+// ===============================
 // BULK CALL
+// ===============================
+app.post("/api/bulk-call", async (req, res) => {
+  try {
+    const numbers = req.body.numbers;
 
-app.post("/api/bulk-call",async(req,res)=>{
+    if (!Array.isArray(numbers)) {
+      return res.status(400).json({ error: "numbers must be array" });
+    }
 
-const numbers = req.body.numbers
+    console.log("📤 Numbers received:", numbers);
 
-if(!Array.isArray(numbers)){
-return res.status(400).json({error:"numbers must be array"})
-}
+    numbers.forEach((num, i) => {
+      setTimeout(() => {
+        makeCallHybrid(num);
+      }, i * 4000);
+    });
 
-numbers.forEach((num,i)=>{
+    res.json({ success: true, total: numbers.length });
 
-setTimeout(()=>{
-makeCallHybrid(num)
-},i*4000)
+  } catch (err) {
+    console.error("❌ Bulk call error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
 
-})
-
-res.json({success:true,total:numbers.length})
-
-})
-
-
+// ===============================
 // AT VOICE WEBHOOK
+// ===============================
+app.post("/at-voice", (req, res) => {
+  res.type("text/xml");
 
-app.post("/at-voice",(req,res)=>{
+  const digits = req.body.digits;
+  const caller = req.body.from;
 
-res.type("text/xml")
+  if (digits) {
+    let status = "INVALID";
 
-const digits = req.body.digits
-const caller = req.body.from
+    if (digits === "1") status = "YES";
+    if (digits === "2") status = "NO";
 
-if(digits){
+    callLogs.push({
+      number: caller,
+      response: status,
+      time: new Date().toISOString(),
+    });
 
-let status="INVALID"
+    return res.send(`
+      <Response>
+        <Say>Thank you for your response</Say>
+      </Response>
+    `);
+  }
 
-if(digits==="1") status="YES"
-if(digits==="2") status="NO"
+  res.send(`
+    <Response>
+      <Say>${callScript}</Say>
+      <GetDigits timeout="10" callbackUrl="${BASE_URL}/at-voice"/>
+    </Response>
+  `);
+});
 
-callLogs.push({
-number:caller,
-response:status,
-time:new Date().toISOString()
-})
+// ===============================
+// TWILIO VOICE
+// ===============================
+app.post("/twilio-voice", (req, res) => {
+  res.type("text/xml");
 
-return res.send(`
-<Response>
-<Say>Thank you for your response</Say>
-</Response>
-`)
+  res.send(`
+    <Response>
+      <Say>${callScript}</Say>
+      <Gather numDigits="1" action="/twilio-response"/>
+    </Response>
+  `);
+});
 
-}
+app.post("/twilio-response", (req, res) => {
+  res.type("text/xml");
 
-res.send(`
-<Response>
-<Say>${callScript}</Say>
-<GetDigits timeout="10" callbackUrl="${BASE_URL}/at-voice"/>
-</Response>
-`)
+  const digit = req.body.Digits;
+  const caller = req.body.From;
 
-})
+  let status = "INVALID";
 
+  if (digit === "1") status = "YES";
+  if (digit === "2") status = "NO";
 
-// TWILIO FALLBACK
+  callLogs.push({
+    number: caller,
+    response: status,
+    time: new Date().toISOString(),
+  });
 
-app.post("/twilio-voice",(req,res)=>{
+  res.send("<Response><Say>Thank you</Say></Response>");
+});
 
-res.type("text/xml")
-
-res.send(`
-<Response>
-<Say>${callScript}</Say>
-<Gather numDigits="1" action="/twilio-response"/>
-</Response>
-`)
-
-})
-
-
-app.post("/twilio-response",(req,res)=>{
-
-res.type("text/xml")
-
-const digit = req.body.Digits
-const caller = req.body.From
-
-let status="INVALID"
-
-if(digit==="1") status="YES"
-if(digit==="2") status="NO"
-
-callLogs.push({
-number:caller,
-response:status,
-time:new Date().toISOString()
-})
-
-res.send("<Response><Say>Thank you</Say></Response>")
-
-})
-
-
+// ===============================
 // STATS
+// ===============================
+app.get("/api/stats", (req, res) => {
+  const total = callLogs.length;
+  const yes = callLogs.filter(l => l.response === "YES").length;
+  const no = callLogs.filter(l => l.response === "NO").length;
 
-app.get("/api/stats",(req,res)=>{
+  res.json({
+    total,
+    yes,
+    no,
+    conversionRate: total
+      ? ((yes / total) * 100).toFixed(2) + "%"
+      : "0%",
+  });
+});
 
-const total = callLogs.length
-const yes = callLogs.filter(l=>l.response==="YES").length
-const no = callLogs.filter(l=>l.response==="NO").length
+// ===============================
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "index.html"));
+});
 
-res.json({
-total,
-yes,
-no,
-conversionRate: total ? ((yes/total)*100).toFixed(2)+"%" : "0%"
-})
-
-})
-
-
-app.get("/",(req,res)=>{
-res.sendFile(path.join(__dirname,"public","index.html"))
-})
-
-const PORT = process.env.PORT || 3000
-
-app.listen(PORT,()=>{
-console.log("Server running on",PORT)
-})
+// ===============================
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log("🚀 Server running on port", PORT);
+});
