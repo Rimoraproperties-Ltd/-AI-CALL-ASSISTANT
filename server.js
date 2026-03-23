@@ -46,15 +46,15 @@ app.post("/api/script", (req, res) => {
 });
 
 // ===============================
-// 🔥 FORCE TEST (IMPORTANT)
+// 🔥 FORCE TEST ROUTE
 // ===============================
 app.get("/force-call", async (req, res) => {
   try {
     const response = await axios.post(
-      "https://voice.africastalking.com/call",
+      "https://api.africastalking.com/version1/voice/call", // ✅ FIXED
       new URLSearchParams({
         username: AT_USERNAME,
-        to: "+2349026645633", // 🔁 replace with your number if needed
+        to: "+2349026645633", // change if needed
         from: AT_VIRTUAL_NUMBER,
         callBackUrl: `${BASE_URL}/at-voice`,
       }),
@@ -68,11 +68,10 @@ app.get("/force-call", async (req, res) => {
 
     console.log("🔥 FORCE CALL RESPONSE:", response.data);
 
-    res.send("Call triggered. Check your phone.");
+    res.send("Call triggered. Check phone.");
 
   } catch (err) {
     console.log("❌ FORCE CALL ERROR:", err.response?.data || err.message);
-
     res.send("Error triggering call. Check logs.");
   }
 });
@@ -85,7 +84,7 @@ async function makeCallHybrid(to) {
 
   try {
     const response = await axios.post(
-      "https://voice.africastalking.com/call",
+      "https://api.africastalking.com/version1/voice/call", // ✅ FIXED
       new URLSearchParams({
         username: AT_USERNAME,
         to: to,
@@ -105,7 +104,7 @@ async function makeCallHybrid(to) {
     return "AT";
 
   } catch (err) {
-    console.log("❌ AT ERROR:", err.response?.data || err.message);
+    console.log("❌ AT ERROR FULL:", err.response?.data || err.message);
 
     // Twilio fallback
     try {
@@ -225,34 +224,4 @@ app.post("/twilio-response", (req, res) => {
     time: new Date().toISOString(),
   });
 
-  res.send("<Response><Say>Thank you</Say></Response>");
-});
-
-// ===============================
-// STATS
-// ===============================
-app.get("/api/stats", (req, res) => {
-  const total = callLogs.length;
-  const yes = callLogs.filter(l => l.response === "YES").length;
-  const no = callLogs.filter(l => l.response === "NO").length;
-
-  res.json({
-    total,
-    yes,
-    no,
-    conversionRate: total
-      ? ((yes / total) * 100).toFixed(2) + "%"
-      : "0%",
-  });
-});
-
-// ===============================
-app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "index.html"));
-});
-
-// ===============================
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log("🚀 Server running on port", PORT);
-});
+  res.send("<Response><Say>Thank you
