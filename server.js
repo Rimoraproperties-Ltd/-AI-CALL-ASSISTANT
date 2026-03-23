@@ -46,7 +46,7 @@ app.post("/api/script", (req, res) => {
 });
 
 // ===============================
-// 🔥 FORCE TEST
+// 🔥 FORCE TEST (FULL ERROR OUTPUT)
 // ===============================
 app.get("/force-call", async (req, res) => {
   try {
@@ -54,7 +54,7 @@ app.get("/force-call", async (req, res) => {
       "https://api.africastalking.com/version1/voice/call",
       new URLSearchParams({
         username: AT_USERNAME,
-        to: "+2349026645633",
+        to: "+2349026645633", // change if needed
         from: AT_VIRTUAL_NUMBER,
         callBackUrl: `${BASE_URL}/at-voice`,
       }),
@@ -66,17 +66,28 @@ app.get("/force-call", async (req, res) => {
       }
     );
 
-    console.log("🔥 FORCE CALL RESPONSE:", response.data);
+    console.log("🔥 FORCE CALL SUCCESS:", response.data);
 
-    res.send("Call triggered. Check phone.");
+    res.json({
+      success: true,
+      data: response.data,
+    });
+
   } catch (err) {
-    console.log("❌ FORCE CALL ERROR:", err.response?.data || err.message);
-    res.send("Error triggering call.");
+
+    const fullError = err.response?.data || err.message;
+
+    console.log("❌ FORCE CALL ERROR FULL:", fullError);
+
+    res.json({
+      success: false,
+      error: fullError,
+    });
   }
 });
 
 // ===============================
-// HYBRID CALL
+// HYBRID CALL FUNCTION
 // ===============================
 async function makeCallHybrid(to) {
   console.log("📞 Attempting call:", to);
@@ -101,10 +112,14 @@ async function makeCallHybrid(to) {
     console.log("✅ AT SUCCESS:", response.data);
 
     return "AT";
-  } catch (err) {
-    console.log("❌ AT ERROR:", err.response?.data || err.message);
 
-    // Twilio fallback
+  } catch (err) {
+
+    const atError = err.response?.data || err.message;
+
+    console.log("❌ AT ERROR FULL:", atError);
+
+    // Twilio fallback (safe)
     try {
       await twilioClient.calls.create({
         to: to,
@@ -115,6 +130,7 @@ async function makeCallHybrid(to) {
       console.log("✅ Twilio fallback success");
 
       return "Twilio";
+
     } catch (twilioErr) {
       console.log("❌ Twilio failed:", twilioErr.message);
       return "FAILED";
@@ -142,6 +158,7 @@ app.post("/api/bulk-call", async (req, res) => {
     });
 
     res.json({ success: true, total: numbers.length });
+
   } catch (err) {
     console.error("❌ Bulk error:", err.message);
     res.status(500).json({ error: err.message });
@@ -199,7 +216,7 @@ app.post("/twilio-voice", (req, res) => {
 });
 
 // ===============================
-// TWILIO RESPONSE (FIXED)
+// TWILIO RESPONSE
 // ===============================
 app.post("/twilio-response", (req, res) => {
   res.type("text/xml");
