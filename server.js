@@ -46,15 +46,15 @@ app.post("/api/script", (req, res) => {
 });
 
 // ===============================
-// 🔥 FORCE TEST ROUTE
+// 🔥 FORCE TEST
 // ===============================
 app.get("/force-call", async (req, res) => {
   try {
     const response = await axios.post(
-      "https://api.africastalking.com/version1/voice/call", // ✅ FIXED
+      "https://api.africastalking.com/version1/voice/call",
       new URLSearchParams({
         username: AT_USERNAME,
-        to: "+2349026645633", // change if needed
+        to: "+2349026645633",
         from: AT_VIRTUAL_NUMBER,
         callBackUrl: `${BASE_URL}/at-voice`,
       }),
@@ -69,22 +69,21 @@ app.get("/force-call", async (req, res) => {
     console.log("🔥 FORCE CALL RESPONSE:", response.data);
 
     res.send("Call triggered. Check phone.");
-
   } catch (err) {
     console.log("❌ FORCE CALL ERROR:", err.response?.data || err.message);
-    res.send("Error triggering call. Check logs.");
+    res.send("Error triggering call.");
   }
 });
 
 // ===============================
-// HYBRID CALL FUNCTION
+// HYBRID CALL
 // ===============================
 async function makeCallHybrid(to) {
   console.log("📞 Attempting call:", to);
 
   try {
     const response = await axios.post(
-      "https://api.africastalking.com/version1/voice/call", // ✅ FIXED
+      "https://api.africastalking.com/version1/voice/call",
       new URLSearchParams({
         username: AT_USERNAME,
         to: to,
@@ -102,9 +101,8 @@ async function makeCallHybrid(to) {
     console.log("✅ AT SUCCESS:", response.data);
 
     return "AT";
-
   } catch (err) {
-    console.log("❌ AT ERROR FULL:", err.response?.data || err.message);
+    console.log("❌ AT ERROR:", err.response?.data || err.message);
 
     // Twilio fallback
     try {
@@ -117,10 +115,8 @@ async function makeCallHybrid(to) {
       console.log("✅ Twilio fallback success");
 
       return "Twilio";
-
     } catch (twilioErr) {
       console.log("❌ Twilio failed:", twilioErr.message);
-
       return "FAILED";
     }
   }
@@ -146,7 +142,6 @@ app.post("/api/bulk-call", async (req, res) => {
     });
 
     res.json({ success: true, total: numbers.length });
-
   } catch (err) {
     console.error("❌ Bulk error:", err.message);
     res.status(500).json({ error: err.message });
@@ -178,11 +173,7 @@ app.post("/at-voice", (req, res) => {
       time: new Date().toISOString(),
     });
 
-    return res.send(`
-      <Response>
-        <Say>Thank you</Say>
-      </Response>
-    `);
+    return res.send(`<Response><Say>Thank you</Say></Response>`);
   }
 
   res.send(`
@@ -194,7 +185,7 @@ app.post("/at-voice", (req, res) => {
 });
 
 // ===============================
-// TWILIO FALLBACK
+// TWILIO VOICE
 // ===============================
 app.post("/twilio-voice", (req, res) => {
   res.type("text/xml");
@@ -207,6 +198,9 @@ app.post("/twilio-voice", (req, res) => {
   `);
 });
 
+// ===============================
+// TWILIO RESPONSE (FIXED)
+// ===============================
 app.post("/twilio-response", (req, res) => {
   res.type("text/xml");
 
@@ -224,4 +218,35 @@ app.post("/twilio-response", (req, res) => {
     time: new Date().toISOString(),
   });
 
-  res.send("<Response><Say>Thank you
+  res.send(`<Response><Say>Thank you</Say></Response>`);
+});
+
+// ===============================
+// STATS
+// ===============================
+app.get("/api/stats", (req, res) => {
+  const total = callLogs.length;
+  const yes = callLogs.filter(l => l.response === "YES").length;
+  const no = callLogs.filter(l => l.response === "NO").length;
+
+  res.json({
+    total,
+    yes,
+    no,
+    conversionRate: total
+      ? ((yes / total) * 100).toFixed(2) + "%"
+      : "0%",
+  });
+});
+
+// ===============================
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "index.html"));
+});
+
+// ===============================
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, () => {
+  console.log("🚀 Server running on port", PORT);
+});
