@@ -10,14 +10,10 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
-// Serve frontend
 app.use(express.static(path.join(__dirname, "public")));
 
-// ===============================
-// ENV VARIABLES
-// ===============================
+// ENV
 const BASE_URL = process.env.BASE_URL;
-
 const AT_USERNAME = process.env.AT_USERNAME;
 const AT_API_KEY = process.env.AT_API_KEY;
 const AT_VIRTUAL_NUMBER = process.env.AT_VIRTUAL_NUMBER;
@@ -26,39 +22,26 @@ const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID;
 const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN;
 const TWILIO_PHONE_NUMBER = process.env.TWILIO_PHONE_NUMBER;
 
-console.log("USING AT USERNAME:", AT_USERNAME);
-
 const twilioClient = twilio(
   TWILIO_ACCOUNT_SID,
   TWILIO_AUTH_TOKEN
 );
 
-// ===============================
-// MEMORY
-// ===============================
 let callLogs = [];
 let callScript = "Hello, press 1 if available, press 2 if not.";
 
 // ===============================
-// UPDATE SCRIPT
-// ===============================
-app.post("/api/script", (req, res) => {
-  callScript = req.body.script || callScript;
-  res.json({ success: true });
-});
-
-// ===============================
-// 🔥 FORCE TEST (FIXED ENDPOINT)
+// FORCE CALL TEST
 // ===============================
 app.get("/force-call", async (req, res) => {
   try {
     const response = await axios.post(
-      "https://voice.africastalking.com/call", // ✅ FIXED
+      "https://voice.africastalking.com/call",
       new URLSearchParams({
         username: AT_USERNAME,
         to: "+2349026645633",
         from: AT_VIRTUAL_NUMBER,
-        callBackUrl: `${BASE_URL}/at-voice`,
+        callBackUrl: BASE_URL + "/at-voice",
       }),
       {
         headers: {
@@ -68,39 +51,27 @@ app.get("/force-call", async (req, res) => {
       }
     );
 
-    console.log("🔥 FORCE CALL SUCCESS:", response.data);
-
-    res.json({
-      success: true,
-      data: response.data,
-    });
+    console.log("AT SUCCESS:", response.data);
+    res.json(response.data);
 
   } catch (err) {
-    const fullError = err.response?.data || err.message;
-
-    console.log("❌ FORCE CALL ERROR FULL:", fullError);
-
-    res.json({
-      success: false,
-      error: fullError,
-    });
+    console.log("AT ERROR:", err.response?.data || err.message);
+    res.json({ error: err.response?.data || err.message });
   }
 });
 
 // ===============================
-// HYBRID CALL FUNCTION (FIXED)
+// CALL FUNCTION
 // ===============================
-async function makeCallHybrid(to) {
-  console.log("📞 Attempting call:", to);
-
+async function makeCall(to) {
   try {
-    const response = await axios.post(
-      "https://voice.africastalking.com/call", // ✅ FIXED
+    await axios.post(
+      "https://voice.africastalking.com/call",
       new URLSearchParams({
         username: AT_USERNAME,
         to: to,
         from: AT_VIRTUAL_NUMBER,
-        callBackUrl: `${BASE_URL}/at-voice`,
+        callBackUrl: BASE_URL + "/at-voice",
       }),
       {
         headers: {
@@ -110,31 +81,10 @@ async function makeCallHybrid(to) {
       }
     );
 
-    console.log("✅ AT SUCCESS:", response.data);
-
-    return "AT";
+    console.log("Call queued:", to);
 
   } catch (err) {
-    const atError = err.response?.data || err.message;
-
-    console.log("❌ AT ERROR FULL:", atError);
-
-    // Twilio fallback
-    try {
-      await twilioClient.calls.create({
-        to: to,
-        from: TWILIO_PHONE_NUMBER,
-        url: `${BASE_URL}/twilio-voice`,
-      });
-
-      console.log("✅ Twilio fallback success");
-
-      return "Twilio";
-
-    } catch (twilioErr) {
-      console.log("❌ Twilio failed:", twilioErr.message);
-      return "FAILED";
-    }
+    console.log("Call error:", err.response?.data || err.message);
   }
 }
 
@@ -142,11 +92,42 @@ async function makeCallHybrid(to) {
 // BULK CALL
 // ===============================
 app.post("/api/bulk-call", async (req, res) => {
-  try {
-    const numbers = req.body.numbers;
+  const numbers = req.body.numbers;
 
-    if (!Array.isArray(numbers)) {
-      return res.status(400).json({ error: "numbers must be array" });
-    }
+  if (!Array.isArray(numbers)) {
+    return res.status(400).json({ error: "numbers must be array" });
+  }
 
-    console.log("📤
+  numbers.forEach((num, i) => {
+    setTimeout(() => makeCall(num), i * 3000);
+  });
+
+  res.json({ success: true });
+});
+
+// ===============================
+// AT WEBHOOK
+// ===============================
+app.post("/at-voice", (req, res) => {
+  res.type("text/xml");
+
+  res.send(
+    "<Response><Say>Hello, press 1 or 2</Say><GetDigits timeout='10' callbackUrl='" +
+      BASE_URL +
+      "/at-voice'/></Response>"
+  );
+});
+
+// ===============================
+// HOME
+// ===============================
+app.get("/", (req, res) => {
+  res.send("Server running");
+});
+
+// ===============================
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, () => {
+  console.log("Server running on port", PORT);
+});
