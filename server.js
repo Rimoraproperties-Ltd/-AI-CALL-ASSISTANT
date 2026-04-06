@@ -26,6 +26,8 @@ const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID;
 const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN;
 const TWILIO_PHONE_NUMBER = process.env.TWILIO_PHONE_NUMBER;
 
+console.log("USING AT USERNAME:", AT_USERNAME);
+
 const twilioClient = twilio(
   TWILIO_ACCOUNT_SID,
   TWILIO_AUTH_TOKEN
@@ -46,15 +48,15 @@ app.post("/api/script", (req, res) => {
 });
 
 // ===============================
-// 🔥 FORCE TEST (FULL ERROR OUTPUT)
+// 🔥 FORCE TEST (FIXED ENDPOINT)
 // ===============================
 app.get("/force-call", async (req, res) => {
   try {
     const response = await axios.post(
-      "https://api.africastalking.com/version1/voice/call",
+      "https://voice.africastalking.com/call", // ✅ FIXED
       new URLSearchParams({
         username: AT_USERNAME,
-        to: "+2349026645633", // change if needed
+        to: "+2349026645633",
         from: AT_VIRTUAL_NUMBER,
         callBackUrl: `${BASE_URL}/at-voice`,
       }),
@@ -74,7 +76,6 @@ app.get("/force-call", async (req, res) => {
     });
 
   } catch (err) {
-
     const fullError = err.response?.data || err.message;
 
     console.log("❌ FORCE CALL ERROR FULL:", fullError);
@@ -87,14 +88,14 @@ app.get("/force-call", async (req, res) => {
 });
 
 // ===============================
-// HYBRID CALL FUNCTION
+// HYBRID CALL FUNCTION (FIXED)
 // ===============================
 async function makeCallHybrid(to) {
   console.log("📞 Attempting call:", to);
 
   try {
     const response = await axios.post(
-      "https://api.africastalking.com/version1/voice/call",
+      "https://voice.africastalking.com/call", // ✅ FIXED
       new URLSearchParams({
         username: AT_USERNAME,
         to: to,
@@ -114,12 +115,11 @@ async function makeCallHybrid(to) {
     return "AT";
 
   } catch (err) {
-
     const atError = err.response?.data || err.message;
 
     console.log("❌ AT ERROR FULL:", atError);
 
-    // Twilio fallback (safe)
+    // Twilio fallback
     try {
       await twilioClient.calls.create({
         to: to,
@@ -149,121 +149,4 @@ app.post("/api/bulk-call", async (req, res) => {
       return res.status(400).json({ error: "numbers must be array" });
     }
 
-    console.log("📤 Numbers received:", numbers);
-
-    numbers.forEach((num, i) => {
-      setTimeout(() => {
-        makeCallHybrid(num);
-      }, i * 4000);
-    });
-
-    res.json({ success: true, total: numbers.length });
-
-  } catch (err) {
-    console.error("❌ Bulk error:", err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ===============================
-// AT WEBHOOK
-// ===============================
-app.post("/at-voice", (req, res) => {
-  console.log("📥 AT WEBHOOK HIT:", req.body);
-
-  res.type("text/xml");
-
-  const digits = req.body.digits;
-  const caller = req.body.from;
-
-  if (digits) {
-    console.log("🎯 USER PRESSED:", digits);
-
-    let status = "INVALID";
-
-    if (digits === "1") status = "YES";
-    if (digits === "2") status = "NO";
-
-    callLogs.push({
-      number: caller,
-      response: status,
-      time: new Date().toISOString(),
-    });
-
-    return res.send(`<Response><Say>Thank you</Say></Response>`);
-  }
-
-  res.send(`
-    <Response>
-      <Say>${callScript}</Say>
-      <GetDigits timeout="10" callbackUrl="${BASE_URL}/at-voice"/>
-    </Response>
-  `);
-});
-
-// ===============================
-// TWILIO VOICE
-// ===============================
-app.post("/twilio-voice", (req, res) => {
-  res.type("text/xml");
-
-  res.send(`
-    <Response>
-      <Say>${callScript}</Say>
-      <Gather numDigits="1" action="/twilio-response"/>
-    </Response>
-  `);
-});
-
-// ===============================
-// TWILIO RESPONSE
-// ===============================
-app.post("/twilio-response", (req, res) => {
-  res.type("text/xml");
-
-  const digit = req.body.Digits;
-  const caller = req.body.From;
-
-  let status = "INVALID";
-
-  if (digit === "1") status = "YES";
-  if (digit === "2") status = "NO";
-
-  callLogs.push({
-    number: caller,
-    response: status,
-    time: new Date().toISOString(),
-  });
-
-  res.send(`<Response><Say>Thank you</Say></Response>`);
-});
-
-// ===============================
-// STATS
-// ===============================
-app.get("/api/stats", (req, res) => {
-  const total = callLogs.length;
-  const yes = callLogs.filter(l => l.response === "YES").length;
-  const no = callLogs.filter(l => l.response === "NO").length;
-
-  res.json({
-    total,
-    yes,
-    no,
-    conversionRate: total
-      ? ((yes / total) * 100).toFixed(2) + "%"
-      : "0%",
-  });
-});
-
-// ===============================
-app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "index.html"));
-});
-
-// ===============================
-const PORT = process.env.PORT || 3000;
-
-app.listen(PORT, () => {
-  console.log("🚀 Server running on port", PORT);
-});
+    console.log("📤
